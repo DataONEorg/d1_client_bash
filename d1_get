@@ -1,0 +1,14 @@
+#!/bin/bash
+#
+# Get an object given it's identifier
+#
+
+source `dirname $0`/lib/d1_libbash.sh
+
+if [ -z $BASEURL ]; then
+  BASEURL=$CNBASE
+fi
+
+get_object $1 $2
+
+cleanup_temp_files

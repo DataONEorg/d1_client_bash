@@ -1,0 +1,15 @@
+#!/bin/bash
+#
+# List available nodes
+#
+
+source `dirname $0`/lib/d1_libbash.sh
+
+list_nodes
+printf "ID\tName\tBaseURL\n"
+for NODE in $NODELIST; do
+  OUTPUT=`cat $REGISTRY_DOC | $XML sel -t -m  "//node/identifier[text()='$NODE']" -v . -o "\t" -v ../name -o "\t" -v ../baseURL`
+  printf "$OUTPUT \n"
+done
+
+cleanup_temp_files
