@@ -1,0 +1,57 @@
+#!/bin/bash
+# Arguments -n Node -r -v
+# Just lists the ObjectFormats that are registered on a node supporting the 
+# ListFormats method which is described over here:
+#   http://mule1.dataone.org/ArchitectureDocs-current/apis/CN_APIs.html
+#
+# You'll be wanting to install xmlstarlet to run this. Actually just install it
+# anyway, it's good.
+#
+
+
+target=$NODE
+
+usage()
+{
+cat << EOF
+usage: $0 [-r] [-n node]
+
+List the object formats available on a (Coordinating) Node specified by the NODE
+environment variable or from the -n parameter.
+
+OPTIONS:
+
+  -h  Show this message
+  -n  Node to create the new object ($NODE)
+  -r  Show raw response
+  -v  Be a bit more verbose
+EOF
+}
+
+
+while getopts "hvrn:" OPTION
+do
+    case $OPTION in
+      h) usage; exit 1;;
+      n) target=$OPTARG;;
+      v) verbose=1;;
+      r) raw=1;;
+      \?) usage; exit 1;;
+    esac
+done
+
+
+url="${target}/v1/formats"
+if [[ -n ${verbose} ]]; then
+  echo "URL     : ${url}"
+fi
+
+if [[ -n ${raw} ]]; then
+  CMD="curl -k -s \"${url}\" | xml fo"
+else
+  CMD="curl -k -s \"${url}\" | xml sel -t -m \"//objectFormat\" -v \"formatId\" -n"
+fi
+if [[ -n ${verbose} ]]; then
+  echo "Command : ${CMD}"
+fi
+eval ${CMD}
