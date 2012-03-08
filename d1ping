@@ -1,0 +1,127 @@
+#!/bin/bash
+# Arguments -n Node
+#
+# Ping a DataONE node, returning the time taken for operation.
+# Exit code and parameters can conform to nagios plugin expectations
+
+VERSION="Version 0.0.2"
+CURL="/usr/bin/curl -k -s -o /dev/null"
+
+target=$NODE
+verbose=""
+raw=""
+nagios=""
+warning=1.00
+critical=10.0
+host=""
+ntype=""
+
+usage()
+{
+cat << EOF
+
+`basename $0` [-r] [-v] [-w warning] [-c critical] [-V] [-n node]
+
+Ping the DataONE node specified by the NODE environment variable or from the -n
+parameter. This script can be used as a Nagios plugin for a basic check of node
+availablility. To do so, just call with -n and optionally -c and -w.
+
+OPTIONS:
+
+  -h  Show this message
+  -n  Node to create the new object ($NODE)
+  -r  Show raw response
+  -v  Be a bit more verbose
+  -V  Show version (${VERSION})
+  -w  Warning threshold (ping time in seconds, ${warning})
+  -c  Critical threshold (ping time in seconds, ${critical})
+  -H  Host name, must set -T node type when used
+  -T  Node type, one of "CN", "GMN", "METACAT"
+
+EOF
+}
+
+show_version()
+{
+  echo ${VERSION}
+}
+
+## Parse the command line
+while getopts "hvVrn:w:c:H:T:" OPTION
+do
+    case $OPTION in
+      h) usage; exit 1;;
+      n) target=$OPTARG;;
+      v) verbose=1;;
+      r) raw=1;;
+      w) warning=$OPTARG;;
+      c) critical=$OPTARG;;
+      V) show_version;;
+      H) host=$OPTARG;;
+      T) ntype=$OPTARG;;
+      \?) usage; exit 1;;
+    esac
+done
+
+## Hack alert - should really be setting the base path for the node as a 
+## command line param.
+if [[ -n ${host} ]]; then
+  if [[ -z ${ntype} ]]; then
+    echo "-T node type required with -H host"
+    echo "Node types = CN, GMN, METACAT"
+    exit 3
+  fi
+  if [[ "${ntype}"=="CN" ]]; then
+    target="https://${host}/cn"
+  elif [[ "${ntype}"=="GMN" ]]; then
+    target="https://${host}/mn"
+  elif [[ "${ntype}"=="METACAT" ]]; then
+    target="https://${host}/knb/d1/mn"
+  else
+    echo "Unknown node type: ${ntype}"
+    exit 3
+  fi
+fi
+
+## Ping API REST endpoint
+url="${target}/v1/monitor/ping"
+if [[ -n ${verbose} ]]; then
+  echo "URL     : ${url}"
+fi
+
+if [[ -n ${raw} ]]; then
+  ## Just ping, verbosely and exit
+  ${CURL} -v "${url}"
+  exit 3
+else
+  ## Ping and retrieve status code from HTTP response
+  CMD="${CURL} -w \"%{http_code} \" \"${url}\""
+fi
+if [[ -n ${verbose} ]]; then
+  echo "Command : ${CMD}"
+fi
+
+## Run the request, timing how long it takes
+SAVET=$TIMEFORMAT
+TIMEFORMAT="%R"
+res=( $( { time eval ${CMD}; } 2>&1 ) )
+TIMEFORMAT=$SAVET
+
+## Figure out the exit level based on response status and duration
+## 3 = unknown, 2 = failure / critical, 1 = warning, 0 = sweet
+if [[ -n ${verbose} ]]; then
+  echo "Result  : ${res[0]}, ${res[1]}"
+  exit 3
+else
+  EC=2
+  echo ${res[1]}
+  if [[ "${res[0]}"=="200" ]]; then
+    EC=1
+    if [[ ${res[1]} < ${warning} ]]; then
+      EC=0
+    elif [[ ${res[1]} > ${critical} ]]; then
+      EC=2
+    fi
+  fi
+  exit $EC
+fi
