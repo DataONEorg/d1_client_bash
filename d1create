@@ -1,0 +1,127 @@
+#!/bin/bash
+# Creates content on a DataONE member node.
+#
+# Arguments: -c Certificate -i Identifier -t Type -n Replicas -r
+#
+# You will need python source for d1_common_python and d1_instance_generator to 
+# run this script. These can be retrieved from svn at:
+#   https://repository.dataone.org/software/cicore/trunk
+#
+# D.V.
+#
+
+#The namespace for DataONE schema stuff
+NAMESPACE="http://ns.dataone.org/service/types/v1"
+
+#Script to urlencode, stdin to stdout
+URLENCODE="`dirname $0`/urlencode"
+
+#Base path to folder containing the pythin stuff
+WD="$HOME/Workspaces/DataONE_trunk/"
+export PYTHONPATH=".:$WD/d1_common_python/src:$WD/d1_instance_generator/src"
+
+#Script that given a cert, prints subject to stdout
+MYSUBJECT="$WD/d1_instance_generator/src/my_subject.py"
+
+#Script to generate system metadata
+GENSYS="$WD/d1_instance_generator/src/generate_sysmeta.py"
+
+#Destination of generated system metadata doc
+SYSDEST="/tmp/sysmeta.xml"
+
+usage()
+{
+cat << EOF
+usage: $0 -E Certificate -i PID [-t Type] [-n node] [-hrv] Object
+
+Create a new object on a node. Command will create system metadata, and call
+create() on the node specified in the NODE environment variable or from the
+-n parameter.
+
+OPTIONS:
+
+  -h  Show this message
+  -E  Certificate to use for authentication
+  -i  Identifier of the new object
+  -t  Object format identifier for new object
+  -n  Node to create the new object ($NODE)
+  -a  Number of replicas to request (3)
+  -s  Destination of generated system metadata ($SYSDEST)
+  -r  Show raw response
+  -v  Be a bit more verbose
+EOF
+}
+
+TARGET=$NODE
+RAW=""
+VERBOSE=""
+CMD=""
+CERTIFICATE=""
+PID=""
+OTYPE="application/octet-stream"
+NREPS=3
+while getopts "hvrn:E:i:a:t:s:" OPTION
+do
+    case $OPTION in
+      h) usage; exit 1;;
+      n) TARGET=$OPTARG;;
+      v) VERBOSE=1;;
+      r) RAW=1;;
+      E) CERTIFICATE=$OPTARG;;
+      i) PID=$OPTARG;;
+      t) OTYPE=$OPTARG;;
+      a) NREPS=$OPTARG;;
+      s) SYSDEST=$OPTARG;;
+      \?) usage; exit 1;;
+    esac
+done
+
+if [[ -z $TARGET ]]; then
+  echo "NODE or -n required"
+  exit 1
+fi
+if [[ -z $PID ]]; then
+  echo "Identifier is required"
+  exit 1
+fi
+if [[ -z $CERTIFICATE ]]; then
+  echo "Certificate is required"
+  exit 1
+fi
+if [[ -z $OTYPE ]]; then
+  echo "Object format identifier is required"
+  exit 1
+fi
+shift $(($OPTIND - 1))
+if [[ -z $1 ]]; then
+  echo "File for upload is required"
+  exit 1
+fi
+OBJECT=$1
+
+my_subject=$(python ${MYSUBJECT} -l 40 ${CERTIFICATE})
+if [[ $? -ne 0 ]]; then
+  echo "ERROR: certificate ${CERTIFICATE} has expired."
+  exit 2
+fi
+if [[ -n $VERBOSE ]]; then
+  echo "SUBJECT =  $my_subject"
+fi
+
+python ${GENSYS} -f "${OBJECT}" \
+                 -i "${PID}" \
+                 -t "${OTYPE}" \
+                 -s "${my_subject}" \
+                 -n "${NREPS}" > ${SYSDEST}
+
+if [[ -n $VERBOSE ]]; then
+  echo "Generated system metadata is located at: ${SYSDEST}"
+fi
+
+URL="${TARGET}/v1/object"
+CMD="curl -k -s -E  \"${CERTIFICATE}\" -X POST -F \"pid=${PID}\" -F \"object=@${OBJECT}\" -F \"sysmeta=@${SYSDEST}\" \"${URL}\" | xml fo"
+
+if [[ -n $VERBOSE ]]; then
+  echo "Create Command = ${CMD}"
+fi
+eval $CMD
