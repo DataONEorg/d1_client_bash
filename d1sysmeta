@@ -1,0 +1,107 @@
+#!/bin/bash
+#
+# Show system metadata for an object.
+
+VERSION="Version 0.0.2"
+NAMESPACE="d=http://ns.dataone.org/service/types/v1"
+TMP="/tmp"
+
+#Takes stdin and URL encodes with output to stdout 
+URLENCODE="`dirname $0`/urlencode"
+
+#Location of xmlstarlet command
+XML="/usr/local/bin/xml"
+
+baseurl=${NODE}
+raw=""
+verbose=""
+sysmdest="${TMP}/sysmeta.$$.xml"
+keepSysm=""
+
+usage()
+{
+cat << EOF
+
+usage: $(basename $0) OPTIONS PID
+
+Retrieve system metadata for object specified by PID from the node base URL 
+indicated by the NODE environment variable or -b parameter.
+
+OPTIONS:
+
+  -h  Show this message
+  -b  Node from which to retrieve system metadata (${baseurl})
+  -r  Show raw response
+  -v  Be a bit more verbose
+  -V  Show version and exit (${VERSION})
+  -Y  File name for saved response document (${sysmdest})
+  -k  Keep response document (default is to delete on exit)
+ 
+EOF
+}
+
+
+show_version()
+{
+  echo ${VERSION}
+}
+
+while getopts "hvVrkb:Y:" OPTION
+do
+    case $OPTION in
+      h) usage; exit 1;;
+      b) baseurl=$OPTARG;;
+      v) verbose=1;;
+      r) raw=1;;
+      V) show_version; exit 1;;
+      Y) sysmDest=$OPTARG;;
+      k) keepSysm=1;;
+      \?) usage; exit 1;;
+    esac
+done
+
+if [[ -z ${baseurl} ]]; then
+  echo "NODE or -b required"
+  exit 1
+fi
+shift $(($OPTIND - 1))
+if [[ -z ${1} ]]; then
+  echo "PID is required"
+  exit 1
+fi
+
+PID="$(echo $1 | ${URLENCODE})"
+if [[ -n ${verbose} ]]; then
+  echo "PID     : ${1}"
+  echo "Encoded : ${PID}"
+fi
+
+url="${baseurl}/v1/meta/${PID}"
+CMD="curl -k -s -w \"%{http_code}\" -o \"${sysmdest}\" \"${url}\""
+if [[ -n ${verbose} ]]; then
+  echo "Command : ${CMD}"
+fi
+
+status=$(eval ${CMD})
+EC=0
+if [[ ${status} -eq "200" ]]; then
+  if [[ -n ${raw} ]]; then
+    cat ${sysmdest}
+  else
+    if [[ -n ${verbose} ]]; then
+      echo "Status  : ${status}"
+    fi
+    echo
+    ${XML} fo ${sysmdest}
+  fi
+else
+  EC=2
+  echo "ERROR   : Status of response = ${status}"
+  if [[ -n ${verbose} ]]; then
+    cat ${sysmdest}
+  fi
+fi
+if [[ -z ${keepSysm} ]]; then
+  rm ${sysmdest}
+fi
+exit ${EC}

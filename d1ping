@@ -1,13 +1,13 @@
 #!/bin/bash
-# Arguments -n Node
 #
 # Ping a DataONE node, returning the time taken for operation.
-# Exit code and parameters can conform to nagios plugin expectations
+# Exit code and parameters can conform to nagios3 plugin expectations
 
-VERSION="Version 0.0.2"
+VERSION="Version 0.0.3"
 CURL="/usr/bin/curl -k -s -o /dev/null"
 
-target=$NODE
+HTTP="https"
+baseurl=$NODE
 verbose=""
 raw=""
 nagios=""
@@ -20,7 +20,7 @@ usage()
 {
 cat << EOF
 
-`basename $0` [-r] [-v] [-w warning] [-c critical] [-V] [-n node]
+$(basename $0) OPTIONS
 
 Ping the DataONE node specified by the NODE environment variable or from the -n
 parameter. This script can be used as a Nagios plugin for a basic check of node
@@ -29,14 +29,15 @@ availablility. To do so, just call with -n and optionally -c and -w.
 OPTIONS:
 
   -h  Show this message
-  -n  Node to create the new object ($NODE)
+  -b  Node to create the new object ($NODE)
   -r  Show raw response
   -v  Be a bit more verbose
   -V  Show version (${VERSION})
   -w  Warning threshold (ping time in seconds, ${warning})
   -c  Critical threshold (ping time in seconds, ${critical})
-  -H  Host name, must set -T node type when used
-  -T  Node type, one of "CN", "GMN", "METACAT"
+  -H  Host name, must set -P node type when used
+  -P  Base path for node, e.g. "/knb/d1/mn", "/mn", or "/cn"
+  -T  Don't use SSL (i.e. http rather than https)
 
 EOF
 }
@@ -47,44 +48,39 @@ show_version()
 }
 
 ## Parse the command line
-while getopts "hvVrn:w:c:H:T:" OPTION
+while getopts "hvVrTb:w:c:H:P:" OPTION
 do
     case $OPTION in
       h) usage; exit 1;;
-      n) target=$OPTARG;;
+      b) baseurl=$OPTARG;;
       v) verbose=1;;
       r) raw=1;;
       w) warning=$OPTARG;;
       c) critical=$OPTARG;;
       V) show_version;;
       H) host=$OPTARG;;
-      T) ntype=$OPTARG;;
+      P) basePath=$OPTARG;;
+      T) HTTP="http";;
       \?) usage; exit 1;;
     esac
 done
 
-## Hack alert - should really be setting the base path for the node as a 
-## command line param.
+# Set baseurl if host and base path provided
 if [[ -n ${host} ]]; then
-  if [[ -z ${ntype} ]]; then
-    echo "-T node type required with -H host"
-    echo "Node types = CN, GMN, METACAT"
+  if [[ -z ${basePath} ]]; then
+    echo "-P base path required with -H host"
     exit 3
   fi
-  if [[ "${ntype}"=="CN" ]]; then
-    target="https://${host}/cn"
-  elif [[ "${ntype}"=="GMN" ]]; then
-    target="https://${host}/mn"
-  elif [[ "${ntype}"=="METACAT" ]]; then
-    target="https://${host}/knb/d1/mn"
-  else
-    echo "Unknown node type: ${ntype}"
-    exit 3
-  fi
+  baseurl="${HTTP}://${host}${basePath}"
+fi
+
+if [[ -z ${baseurl} ]]; then
+  echo "NODE, -b, or -H and -P required"
+  exit 1
 fi
 
 ## Ping API REST endpoint
-url="${target}/v1/monitor/ping"
+url="${baseurl}/v1/monitor/ping"
 if [[ -n ${verbose} ]]; then
   echo "URL     : ${url}"
 fi
@@ -112,16 +108,14 @@ TIMEFORMAT=$SAVET
 if [[ -n ${verbose} ]]; then
   echo "Result  : ${res[0]}, ${res[1]}"
   exit 3
-else
-  EC=2
-  echo ${res[1]}
-  if [[ "${res[0]}"=="200" ]]; then
-    EC=1
-    if [[ ${res[1]} < ${warning} ]]; then
-      EC=0
-    elif [[ ${res[1]} > ${critical} ]]; then
-      EC=2
-    fi
+EC=2
+echo ${res[1]}
+if [[ "${res[0]}"=="200" ]]; then
+  EC=1
+  if [[ ${res[1]} < ${warning} ]]; then
+    EC=0
+  elif [[ ${res[1]} > ${critical} ]]; then
+    EC=2
   fi
-  exit $EC
 fi
+exit ${EC}

@@ -1,0 +1,103 @@
+#!/bin/bash
+#
+# Show a list of nodes reported from the getCapabilities method
+#
+
+VERSION="Version 0.0.1"
+
+#Location of xmlstarlet command
+XML="/usr/local/bin/xml"
+TMP="/tmp"
+baseurl=$NODE
+tmpfile="${TMP}/$(basename $0).$$.xml"
+keepresp=""
+
+usage()
+{
+cat << EOF
+
+usage: $(basename $0) OPTIONS
+
+List the nodes as reported by the object formats available on a (Coordinating) Node specified by the NODE
+environment variable or from the -b parameter.
+
+OPTIONS:
+
+  -h  Show this message
+  -b  Base URL of node being contacted to read format list (${baseurl})
+  -k  Keep response (default is to delete on exit)
+  -D  Destination for response (${tmpfile})
+  -r  Show raw response
+  -v  Be a bit more verbose
+  -V  Show version (${VERSION})
+ 
+EOF
+}
+
+show_version()
+{
+  echo ${VERSION}
+}
+
+
+## Parse command line
+while getopts "hvVrkb:D:" OPTION
+do
+    case $OPTION in
+      h) usage; exit 1;;
+      b) baseurl=$OPTARG;;
+      k) keepresp=1;;
+      D) tmpfile=$OPTARG;;
+      v) verbose=1;;
+      r) raw=1;;
+      V) show_version; exit 1;;
+      \?) usage; exit 1;;
+    esac
+done
+
+if [[ -z ${baseurl} ]]; then
+  echo "ERROR   : Base URL must be provided by -b or NODE environment variable"
+  exit 1
+ fi
+
+## REST endpoint URL relative to base url
+url="${baseurl}/v1/node"
+
+if [[ -n ${verbose} ]]; then
+  echo "URL     : ${url}"
+fi
+
+## Save response to temp file, capture HTTP status
+CMD="curl -k -s -w \"%{http_code}\" -o \"${tmpfile}\" \"${url}\""
+if [[ -n ${verbose} ]]; then
+  echo "Command : ${CMD}"
+  echo
+fi
+
+status=$(eval ${CMD})
+
+EC=0
+if [[ ${status} == "200" ]]; then
+  echo
+  if [[ -n ${raw} ]]; then
+    xml fo ${tmpfile}
+  else
+    S10="          "
+    S20="${S10}${S10}"
+    S50="${S20}${S20}${S10}"
+    ${XML} sel -t -m "//node" \
+               -v "substring(concat(identifier,'${S20}'),1,20)" \
+               -v "substring(concat(baseURL,'${S50}'),1,50)" -v "name" -n ${tmpfile}
+  fi
+else
+  EC=1
+  echo "ERROR   : Status of response = ${status}"
+  if [[ -n ${verbose} ]]; then
+    cat ${tmpfile}
+  fi
+fi
+if [[ -z ${keepresp} ]]; then
+  rm ${tmpfile}
+fi
+exit $EC
+

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Arguments -n Node -r -v
+# Arguments -b Node -T formatType -r -v
+#
 # Just lists the ObjectFormats that are registered on a node supporting the 
 # ListFormats method which is described over here:
 #   http://mule1.dataone.org/ArchitectureDocs-current/apis/CN_APIs.html
@@ -7,51 +8,94 @@
 # You'll be wanting to install xmlstarlet to run this. Actually just install it
 # anyway, it's good.
 #
+VERSION="Version 0.0.3"
 
+#Location of xmlstarlet command
+XML="/usr/local/bin/xml"
+TMP="/tmp"
+baseurl=$NODE
+formatType=""
 
-target=$NODE
 
 usage()
 {
 cat << EOF
-usage: $0 [-r] [-n node]
+
+usage: $(basename $0) OPTIONS
 
 List the object formats available on a (Coordinating) Node specified by the NODE
-environment variable or from the -n parameter.
+environment variable or from the -b parameter.
 
 OPTIONS:
 
   -h  Show this message
-  -n  Node to create the new object ($NODE)
+  -b  Base URL of node being contacted to read format list ($NODE)
+  -T  Show only formatType specified (METADATA, DATA, RESOURCE)
   -r  Show raw response
   -v  Be a bit more verbose
+ 
 EOF
 }
 
+show_version()
+{
+  echo ${VERSION}
+}
 
-while getopts "hvrn:" OPTION
+
+
+## Parse command line
+while getopts "hvVrb:T:" OPTION
 do
     case $OPTION in
       h) usage; exit 1;;
-      n) target=$OPTARG;;
+      b) baseurl=$OPTARG;;
+      T) formatType=$OPTARG;;
       v) verbose=1;;
       r) raw=1;;
+      V) show_version exit 1;;
       \?) usage; exit 1;;
     esac
 done
 
 
-url="${target}/v1/formats"
+
+
+## REST endpoint URL relative to base url
+url="${baseurl}/v1/formats"
+
 if [[ -n ${verbose} ]]; then
   echo "URL     : ${url}"
 fi
 
-if [[ -n ${raw} ]]; then
-  CMD="curl -k -s \"${url}\" | xml fo"
-else
-  CMD="curl -k -s \"${url}\" | xml sel -t -m \"//objectFormat\" -v \"formatId\" -n"
-fi
+## Save response to a temp file, capture HTTP status
+tmpfile="${TMP}/$(basename $0).$$.xml"
+CMD="curl -k -s -w \"%{http_code}\" -o \"${tmpfile}\" \"${url}\""
 if [[ -n ${verbose} ]]; then
   echo "Command : ${CMD}"
+  echo
 fi
-eval ${CMD}
+
+status=$(eval ${CMD})
+
+if [[ ${status} == "200" ]]; then
+  if [[ -n ${raw} ]]; then
+    xml fo ${tmpfile}
+  else
+    if [[ -z ${formatType} ]]; then
+      ${XML} sel -t -m "//objectFormat" \
+                 -v "substring(concat(formatType,'          '),1,10)" \
+                 -v "formatId" -n ${tmpfile}
+    else
+      ${XML} sel -t -m "//objectFormat[formatType='${formatType}']" \
+                 -v "substring(concat(formatType,'          '),1,10)" \
+                 -v "formatId" -n ${tmpfile}
+    fi
+  fi
+else
+  echo "ERROR   : Status of response = ${status}"
+  if [[ -n ${verbose} ]]; then
+    cat ${tmpfile}
+  fi
+fi
+rm ${tmpfile}

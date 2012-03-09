@@ -1,0 +1,102 @@
+#!/bin/bash
+#
+# Get an object from a DataONE node.
+#
+
+VERSION="Version 0.0.1"
+TMP="/tmp"
+URLENCODE="`dirname $0`/urlencode"
+
+baseurl=${NODE}
+verbose=""
+tmpfile="${TMP}/$(basename $0).$$.out"
+keepresp=""
+dryrun=""
+raw=""
+
+usage()
+{
+cat << EOF
+
+usage: $(basename $0) OPTIONS PID
+
+Retrieve the object specified by PID from the node base URL indicated by the 
+NODE environment variable or -b parameter.
+
+OPTIONS:
+
+  -h  Show this message
+  -b  Node from which to retrieve object (${baseurl})
+  -r  Show raw response
+  -v  Be a bit more verbose
+  -V  Show version and exit (${VERSION})
+  -Y  File name for saved response document (${tmpfile})
+  -k  Keep response document (default is to delete on exit)
+  -d  Attempt a dry-run, receiving only the first byte of the response. 
+      Requires server support of HTTP 1.1 byte ranges, most of which don't.
+ 
+EOF
+}
+
+
+show_version()
+{
+  echo ${VERSION}
+}
+
+while getopts "hvrVkdb:o:" OPTION
+do
+    case $OPTION in
+      h) usage; exit 1;;
+      b) baseurl=$OPTARG;;
+      r) raw=1;;
+      v) verbose=1;;
+      V) show_version; exit 1;;
+      o) tmpfile=$OPTARG;;
+      k) keepresp=1;;
+      d) dryrun="-r 0-0";;
+      \?) usage; exit 1;;
+    esac
+done
+
+if [[ -z ${baseurl} ]]; then
+  echo "NODE or -b required"
+  exit 1
+fi
+shift $(($OPTIND - 1))
+if [[ -z ${1} ]]; then
+  echo "PID is required"
+  exit 1
+fi
+
+PID="$(echo $1 | ${URLENCODE})"
+if [[ -n ${verbose} ]]; then
+  echo "PID     : ${1}"
+  echo "Encoded : ${PID}"
+fi
+
+url="${baseurl}/v1/object/${PID}"
+CMD="curl -k -s ${dryrun} -w \"%{http_code}\" -o \"${tmpfile}\" \"${url}\""
+if [[ -n ${verbose} ]]; then
+  echo "Command : ${CMD}"
+fi
+
+status=$(eval ${CMD})
+EC=0
+if [[ ${status} -eq "200" ]]; then
+  if [[ -n ${raw} ]]; then
+    cat ${tmpfile}
+  else
+    if [[ -n ${verbose} ]]; then
+      echo "Status  : ${status}"
+    fi
+    echo "OK"
+  fi
+else
+  EC=2
+  echo "ERROR   : Status of response = ${status}"
+fi
+if [[ -z ${keepresp} ]]; then
+  rm ${tmpfile}
+fi
+exit ${EC}

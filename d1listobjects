@@ -1,0 +1,116 @@
+#!/bin/bash
+#
+# This script can be used as a nagios3 plugin, but is only really useful for
+# metrics collection rather than alerts since it just returns the number of
+# objects on a node when run in nagios mode, i.e. with -g
+
+XML="/usr/local/bin/xml"
+TMP="/tmp"
+NAMESPACE="d=http://ns.dataone.org/service/types/v1"
+HTTP="https"
+ocount=3
+ostart=0
+baseurl="${NODE}"
+verbose=""
+raw=""
+nagios=""
+
+usage()
+{
+cat << EOF
+
+usage: $(basename $0) OPTIONS
+
+Retrieve an object list from a DataONE node specified by the NODE environment 
+variable or -n parameter.
+
+OPTIONS:
+  -h  Show this message
+  -S  Starting index for first entry (${ostart})
+  -C  Number of entries to retrieve (${ocount})
+  -b  BaseURL of node to retrieve objects from (${baseurl})
+  -H  Host name, must set -P node type when used (overrides -b)
+  -P  Base path for node, e.g. "/knb/d1/mn", "/mn", or "/cn"
+  -r  Show raw output instead of extracting pieces
+  -v  Be a bit more verbose
+  -g  Just return number of objects, overrides other params
+  -T  Don't use SSL (i.e. http rather than https)
+ 
+EOF
+}
+
+while getopts “hvrgTS:C:b:H:P:” OPTION
+do
+  case $OPTION in 
+    h) usage; exit 1;;
+    S) ostart=$OPTARG;;
+    C) ocount=$OPTARG;;
+    b) baseurl=$OPTARG;;
+    r) raw=1;;
+    v) verbose=1;;
+    g) nagios=1;
+       ocount=0;
+       ostart=0;;
+    H) host=$OPTARG;;
+    P) basePath=$OPTARG;;
+    T) HTTP="http";;
+    \?) usage; exit 1;;
+    esac
+done
+
+# Set baseurl if host and base path provided
+if [[ -n ${host} ]]; then
+  if [[ -z ${basePath} ]]; then
+    echo "-P base path required with -H host"
+    exit 3
+  fi
+  baseurl="${HTTP}://${host}${basePath}"
+fi
+
+if [[ -z ${baseurl} ]]; then
+  echo "NODE, -b, or -H and -P required"
+  exit 1
+fi
+
+url="${baseurl}/v1/object?start=${ostart}&count=${ocount}"
+
+tmpfile="${TMP}/$(basename $0).$$.xml"
+CMD="curl -k -s -w \"%{http_code}\" -o \"${tmpfile}\" \"${url}\""
+if [[ -n ${verbose} ]]; then
+  echo "URL     : ${url}"
+  echo "Command : ${CMD}"
+  echo
+fi
+
+EC=3
+status=$(eval ${CMD})
+
+if [[ ${status} == "200" ]]; then
+  EC=0
+  if [[ -n ${raw} ]]; then
+    xml fo ${tmpfile}
+  elif [[ -n ${nagios} ]]; then
+    nrecs=$( ${XML} sel -N "${NAMESPACE}" \
+      -t -m "//d:objectList" -v "@total" ${tmpfile})
+    if [[ ${ocount} -eq 0 ]]; then
+      EC=1
+    fi
+    echo ${nrecs}
+  else 
+    ${XML} sel -N "${NAMESPACE}" \
+      -t -m "//d:objectList" -o "Total=" -v "@total" -n \
+      -t -m "//objectInfo" \
+         -v "substring(concat(size,'          '),1,10)" \
+         -v "identifier" -o "  "\
+         -v "formatId" \
+         -n ${tmpfile}
+  fi
+else
+  echo "ERROR   : Status of response = ${status}"
+  if [[ -n ${verbose} ]]; then
+    cat ${tmpfile}
+  fi
+  EC=2
+fi
+rm ${tmpfile}
+exit ${EC}
