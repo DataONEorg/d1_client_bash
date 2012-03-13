@@ -1,32 +1,36 @@
 #!/bin/bash
 #
-# Show a list of nodes reported from the getCapabilities method
+# Resolve the location of an object using the coordinating node resolve method.
 #
 
-VERSION="Version 0.0.3"
+VERSION="Version 0.0.1"
 
 #Location of xmlstarlet command
 XML="/usr/local/bin/xml"
 TMP="/tmp"
+URLENCODE="`dirname $0`/urlencode"
 baseurl=$NODE
 tmpfile="${TMP}/$(basename $0).$$.xml"
 keepresp=""
-baseonly=""
 
 usage()
 {
 cat << EOF
 
-usage: $(basename $0) OPTIONS
+usage: $(basename $0) OPTIONS PID
 
-List the nodes as reported by the object formats available on a (Coordinating) Node specified by the NODE
-environment variable or from the -b parameter.
+Show the location of an object identified by PID as reported by the resolve() 
+method of the (Coordinating) Node specified by the NODE environment variable or 
+from the -b parameter. 
+
+PID:
+
+  Identifier of object to resolve.
 
 OPTIONS:
 
   -h  Show this message
   -b  Base URL of node being contacted to read format list (${baseurl})
-  -B  List only the base URLs (default is no)
   -k  Keep response (default is to delete on exit)
   -D  Destination for response (${tmpfile})
   -r  Show raw response
@@ -43,12 +47,11 @@ show_version()
 
 
 ## Parse command line
-while getopts "hvVrkBb:D:" OPTION
+while getopts "hvVrkb:D:" OPTION
 do
     case $OPTION in
       h) usage; exit 1;;
       b) baseurl=$OPTARG;;
-      B) baseonly=1;;
       k) keepresp=1;;
       D) tmpfile=$OPTARG;;
       v) verbose=1;;
@@ -63,8 +66,20 @@ if [[ -z ${baseurl} ]]; then
   exit 1
  fi
 
+shift $(($OPTIND - 1))
+if [[ -z ${1} ]]; then
+  echo "PID is required"
+  exit 1
+fi
+
+PID="$(echo $1 | ${URLENCODE})"
+if [[ -n ${verbose} ]]; then
+  echo "PID     : ${1}"
+  echo "Encoded : ${PID}"
+fi
+
 ## REST endpoint URL relative to base url
-url="${baseurl}/v1/node"
+url="${baseurl}/v1/resolve/${PID}"
 
 if [[ -n ${verbose} ]]; then
   echo "URL     : ${url}"
@@ -80,22 +95,11 @@ fi
 status=$(eval ${CMD})
 
 EC=0
-if [[ ${status} == "200" ]]; then
+if [[ ${status} == "303" ]]; then
   if [[ -n ${raw} ]]; then
     ${XML} fo ${tmpfile}
   else
-    if [[ -n ${baseonly} ]]; then
-      ${XML} sel -t -m "//node" \
-                 -v "baseURL" -n ${tmpfile}
-    else         
-      S10="          "
-      S20="${S10}${S10}"
-      S50="${S20}${S20}${S10}"
-      ${XML} sel -t -m "//node" \
-                 -v "substring(concat(identifier,'${S20}'),1,20)" \
-                 -v "substring(concat(baseURL,'${S50}'),1,50)" -v "name" \
-                 -n ${tmpfile}
-    fi
+    ${XML} sel -t -m "//objectLocation" -v "url" -n ${tmpfile}
   fi
 else
   EC=1

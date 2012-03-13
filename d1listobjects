@@ -4,6 +4,8 @@
 # metrics collection rather than alerts since it just returns the number of
 # objects on a node when run in nagios mode, i.e. with -g
 
+VERSION="Version 0.0.3"
+
 XML="/usr/local/bin/xml"
 TMP="/tmp"
 NAMESPACE="d=http://ns.dataone.org/service/types/v1"
@@ -39,7 +41,14 @@ OPTIONS:
 EOF
 }
 
-while getopts “hvrgTS:C:b:H:P:” OPTION
+
+show_version()
+{
+  echo ${VERSION}
+}
+
+
+while getopts “hvrgTVS:C:b:H:P:” OPTION
 do
   case $OPTION in 
     h) usage; exit 1;;
@@ -54,6 +63,7 @@ do
     H) host=$OPTARG;;
     P) basePath=$OPTARG;;
     T) HTTP="http";;
+    V) show_version; exit 1;;
     \?) usage; exit 1;;
     esac
 done
@@ -88,7 +98,7 @@ status=$(eval ${CMD})
 if [[ ${status} == "200" ]]; then
   EC=0
   if [[ -n ${raw} ]]; then
-    xml fo ${tmpfile}
+    ${XML}  fo ${tmpfile}
   elif [[ -n ${nagios} ]]; then
     nrecs=$( ${XML} sel -N "${NAMESPACE}" \
       -t -m "//d:objectList" -v "@total" ${tmpfile})

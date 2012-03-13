@@ -1,0 +1,132 @@
+#/bin/bash
+#
+# Script to search for content using the CN search index.
+#
+
+VERSION="Version 0.0.2"
+
+#Location of xmlstarlet command
+XML="/usr/local/bin/xml"
+URLENCODE="`dirname $0`/urlencode"
+TMP="/tmp"
+baseurl=$NODE
+tmpfile="${TMP}/$(basename $0).$$.xml"
+keepres=""
+
+# Default to Development environment round-robbin service
+if [[ -z ${baseurl} ]]; then
+  baseurl="https://cn-dev-rr.dataone.org/cn"
+fi
+
+
+usage()
+{
+cat << EOF
+
+usage: $(basename $0) OPTIONS QUERY
+
+List the object formats available on a (Coordinating) Node specified by the NODE
+environment variable or from the -b parameter.
+
+QUERY: 
+
+  A properly escaped SOLR query. See http://wiki.apache.org/solr/SolrQuerySyntax
+  For example: *:*
+
+OPTIONS:
+
+  -h  Show this message
+  -b  Base URL of node being contacted to read format list (${baseurl})
+  -r  Show raw response
+  -v  Be a bit more verbose
+  -o  File for saving search results (${tmpfile}) 
+  -k  Save search results (default is delete response at exit)
+  -V  Show version (${VERSION}) and exit
+ 
+Example Queries:
+
+  Record with PID starting with "dave"
+
+    "identifier: dave*"
+
+  Records with objectformat = "text/plain"
+  
+    "objectformat:\"text/plain\""
+
+  Records with objectformat != "text/plain"
+  
+    "objectformat:(-\"text/plain\")"
+
+ 
+EOF
+}
+
+show_version()
+{
+  echo ${VERSION}
+}
+
+
+## Parse command line
+while getopts "hvVrkb:T:o:" OPTION
+do
+    case $OPTION in
+      h) usage; exit 1;;
+      b) baseurl=$OPTARG;;
+      v) verbose=1;;
+      r) raw=1;;
+      V) show_version exit 1;;
+      k) keepres=1;;
+      o) tmpfile=$OPTARG;;
+      \?) usage; exit 1;;
+    esac
+done
+
+shift $(($OPTIND - 1))
+if [[ -z ${1} ]]; then
+  echo "QUERY is required"
+  exit 1
+fi
+
+query="$(echo $1 | ${URLENCODE})"
+if [[ -n ${verbose} ]]; then
+  echo "Query   : ${1}"
+  echo "Encoded : ${query}"
+fi
+
+#Create url for REST endpoint
+url="${baseurl}/v1/search/solr?q=${query}"
+
+if [[ -n ${verbose} ]]; then
+  echo "URL     : ${url}"
+fi
+
+CMD="curl -k -s ${dryrun} -w \"%{http_code}\" -o \"${tmpfile}\" \"${url}\""
+
+if [[ -n ${verbose} ]]; then
+  echo "CMD     : ${CMD}"
+  echo "Out file: ${tmpfile}"
+fi
+
+status=$(eval ${CMD})
+EC=0
+if [[ ${status} -eq "200" ]]; then
+  if [[ -n ${raw} ]]; then
+    cat ${tmpfile}
+  else
+    if [[ -n ${verbose} ]]; then
+      echo "Status  : ${status}"
+      echo
+    fi
+    ${XML} fo ${tmpfile}
+  fi
+else
+  EC=2
+  echo "ERROR   : Status of response = ${status}"
+fi
+if [[ -z ${keepres} ]]; then
+  rm ${tmpfile}
+fi
+exit ${EC}
+
+

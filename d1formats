@@ -29,10 +29,11 @@ environment variable or from the -b parameter.
 OPTIONS:
 
   -h  Show this message
-  -b  Base URL of node being contacted to read format list ($NODE)
+  -b  Base URL of node being contacted to read format list ($baseurl)
   -T  Show only formatType specified (METADATA, DATA, RESOURCE)
   -r  Show raw response
   -v  Be a bit more verbose
+  -V  Show verson (${VERSION}) and exit.
  
 EOF
 }
