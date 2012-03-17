@@ -91,7 +91,6 @@ if [[ ${status} -eq "200" ]]; then
     if [[ -n ${verbose} ]]; then
       echo "Status  : ${status}"
     fi
-    echo
     ${XML} fo ${sysmdest}
   fi
 else

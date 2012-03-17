@@ -1,8 +1,14 @@
 #!/bin/bash
 #
+# Calls list objects on Node and shows what comes back.
+#
 # This script can be used as a nagios3 plugin, but is only really useful for
 # metrics collection rather than alerts since it just returns the number of
 # objects on a node when run in nagios mode, i.e. with -g
+#
+# Example: count objects that are not publicly readable on a Node:
+#
+# for id in $(d1listobjects -b $CNSB1 -I -C 300); do UPID=$(echo $id | urlencode); curl -k -s -w "%{http_code}" -o "/tmp/sysmeta.xml" "$CNSB1/v1/meta/${UPID}"; echo ", $id, $OT"; done | grep "401," | wc -l 
 
 VERSION="Version 0.0.3"
 
@@ -16,6 +22,21 @@ baseurl="${NODE}"
 verbose=""
 raw=""
 nagios=""
+idsonly=""
+offsetminutes=""
+
+OFFSETMINUTES=""
+date_minutes_offset()
+{
+  #for os x
+  UN=$(uname)
+  if [ "$(uname)" = "Darwin" ]; then
+    OFFSETMINUTES="-v-${1}M"
+  else 
+    #for linux (there is nothing else...)
+    OFFSETMINUTES="-d-${1}minutes"
+  fi
+}
 
 usage()
 {
@@ -36,7 +57,9 @@ OPTIONS:
   -r  Show raw output instead of extracting pieces
   -v  Be a bit more verbose
   -g  Just return number of objects, overrides other params
+  -M  If set, then only show objects from now to specified minutes ago
   -T  Don't use SSL (i.e. http rather than https)
+  -I  Show identifiers only (default: no)
  
 EOF
 }
@@ -48,7 +71,7 @@ show_version()
 }
 
 
-while getopts “hvrgTVS:C:b:H:P:” OPTION
+while getopts “hvrgTVIS:C:b:H:P:M:” OPTION
 do
   case $OPTION in 
     h) usage; exit 1;;
@@ -62,7 +85,9 @@ do
        ostart=0;;
     H) host=$OPTARG;;
     P) basePath=$OPTARG;;
+    M) offsetminutes=$OPTARG;;
     T) HTTP="http";;
+    I) idsonly=1;;
     V) show_version; exit 1;;
     \?) usage; exit 1;;
     esac
@@ -82,7 +107,13 @@ if [[ -z ${baseurl} ]]; then
   exit 1
 fi
 
-url="${baseurl}/v1/object?start=${ostart}&count=${ocount}"
+if [[ -n ${offsetminutes} ]]; then
+  date_minutes_offset $offsetminutes
+  dd=$(date ${OFFSETMINUTES} -u +%Y-%m-%dT%H:%M:%S)
+  url="${baseurl}/v1/object?start=${ostart}&count=${ocount}&fromDate=${dd}"
+else
+  url="${baseurl}/v1/object?start=${ostart}&count=${ocount}"
+fi
 
 tmpfile="${TMP}/$(basename $0).$$.xml"
 CMD="curl -k -s -w \"%{http_code}\" -o \"${tmpfile}\" \"${url}\""
@@ -107,13 +138,18 @@ if [[ ${status} == "200" ]]; then
     fi
     echo ${nrecs}
   else 
-    ${XML} sel -N "${NAMESPACE}" \
-      -t -m "//d:objectList" -o "Total=" -v "@total" -n \
-      -t -m "//objectInfo" \
-         -v "substring(concat(size,'          '),1,10)" \
-         -v "identifier" -o "  "\
-         -v "formatId" \
-         -n ${tmpfile}
+    if [[ -n ${idsonly} ]]; then
+      ${XML} sel -N "${NAMESPACE}" \
+         -t -m "//objectInfo" -v "identifier" -n ${tmpfile} 
+    else
+      ${XML} sel -N "${NAMESPACE}" \
+        -t -m "//d:objectList" -o "Total=" -v "@total" -n \
+        -t -m "//objectInfo" \
+           -v "substring(concat(size,'          '),1,10)" \
+           -v "identifier" -o "  "\
+           -v "formatId" \
+           -n ${tmpfile}
+    fi
   fi
 else
   echo "ERROR   : Status of response = ${status}"
