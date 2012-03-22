@@ -1,5 +1,6 @@
 #!/bin/bash
-# Creates content on a DataONE member node.
+# Creates content on a DataONE member node. Also handy for generating
+# system metadata for testing purposes - see the -D and -k switches 
 #
 # You will need python source for d1_common_python and d1_instance_generator to 
 # run this script. These can be retrieved from svn at:
@@ -8,7 +9,7 @@
 # D.V.
 #
 
-VERSION="Version 0.0.4"
+VERSION="Version 0.0.5"
 
 #Base path to folder containing the python stuff
 WD="$HOME/Workspaces/DataONE_trunk/"
@@ -116,8 +117,12 @@ fi
 
 my_subject=$(python ${MYSUBJECT} -l 40 ${certificate})
 if [[ $? -ne 0 ]]; then
-  echo "ERROR   : certificate ${certificate} has expired."
-  exit 2
+  if [[ -n ${dryrun} ]]; then
+    echo "WARNING : certificate ${certificate} has expired."
+  else
+    echo "ERROR   : certificate ${certificate} has expired."
+    exit 2
+  fi
 fi
 if [[ -n ${verbose} ]]; then
   echo "SUBJECT : $my_subject"
