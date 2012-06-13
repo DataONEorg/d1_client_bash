@@ -6,10 +6,18 @@
 # col 1 = pid on node a only
 # col 2 = pid on node b only
 # col 3 = pid on both a and b 
+#
+# Example:
+# 
+#   d1piddiff -A "https://cn-stage-unm-1.dataone.org/cn" \
+#             -B "https://cn-stage-ucsb-1.dataone.org/cn" > cmp1.txt
+#
+#
 
 TMP="/tmp"
 node_a=""
 node_b=""
+COMPARE="comm"
 LISTOBJECTS="$(dirname $0)/d1listobjects"
 
 usage()
@@ -22,18 +30,24 @@ Generate a list of identifiers that are present only on each node and on both.
 
 OPTIONS:
   -h Show this message
-  -a Node A baseURL
-  -b Node B baseURL
+  -A Node A baseURL
+  -B Node B baseURL
+  -c Use comm for comparison (default)
+  -d Use diff for the comparison
+  -g Use grep -vhFxf, outputting only PIDs in A not in B
 
 EOF
 }
 
-while getopts "ha:b:" OPTION
+while getopts "hcdgA:B:" OPTION
 do
   case $OPTION in
     h) usage; exit 1;;
-    a) node_a=$OPTARG;;
-    b) node_b=$OPTARG;;
+    A) node_a=$OPTARG;;
+    B) node_b=$OPTARG;;
+    c) COMPARE="comm";;
+    d) COMPARE="diff";;
+    g) COMPARE="grep -vhFxf";;
     \?) usage; exit 1;;
   esac
 done
@@ -49,10 +63,10 @@ fi
 
 
 pids_a="${TMP}/pids_node_a.$$.txt"
-echo "PIDs from node a are in $pids_a"
+echo "PIDs from node a are in $pids_a" >/dev/stderr
 pids_b="${TMP}/pids_node_b.$$.txt"
-echo "PIDs from node b are in $pids_b"
+echo "PIDs from node b are in $pids_b" >/dev/stderr
 
 $LISTOBJECTS -b $node_a -I -C 999999 | sort > $pids_a
 $LISTOBJECTS -b $node_b -I -C 999999 | sort > $pids_b
-comm $pids_a $pids_b
+$COMPARE $pids_a $pids_b
