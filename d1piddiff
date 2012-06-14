@@ -34,12 +34,13 @@ OPTIONS:
   -B Node B baseURL
   -c Use comm for comparison (default)
   -d Use diff for the comparison
-  -g Use grep -vhFxf, outputting only PIDs in A not in B
+  -g Use grep -vhFxf, outputting PIDs in B that are not in A
+  -t Use specified folder for output instead of ${TMP}
 
 EOF
 }
 
-while getopts "hcdgA:B:" OPTION
+while getopts "hcdgA:B:t:" OPTION
 do
   case $OPTION in
     h) usage; exit 1;;
@@ -48,24 +49,28 @@ do
     c) COMPARE="comm";;
     d) COMPARE="diff";;
     g) COMPARE="grep -vhFxf";;
+    t) TMP=$OPTARG;;
     \?) usage; exit 1;;
   esac
 done
 
 if [[ -z ${node_a} ]]; then
-  echo "baseURL for node a required."
+  echo "baseURL for node A required."
   exit 1;
 fi
 if [[ -z ${node_b} ]]; then
-  echo "baseURL for node b required."
+  echo "baseURL for node B required."
+  exit 1;
+fi
+if [[ ! -d ${TMP} ]]; then
+  echo "Folder ${TMP} must exist."
   exit 1;
 fi
 
-
 pids_a="${TMP}/pids_node_a.$$.txt"
-echo "PIDs from node a are in $pids_a" >/dev/stderr
+echo "PIDs from node A are in $pids_a" >/dev/stderr
 pids_b="${TMP}/pids_node_b.$$.txt"
-echo "PIDs from node b are in $pids_b" >/dev/stderr
+echo "PIDs from node B are in $pids_b" >/dev/stderr
 
 $LISTOBJECTS -b $node_a -I -C 999999 | sort > $pids_a
 $LISTOBJECTS -b $node_b -I -C 999999 | sort > $pids_b
