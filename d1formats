@@ -15,6 +15,9 @@ XML="/usr/local/bin/xml"
 TMP="/tmp"
 baseurl=$NODE
 formatType=""
+countObjects=""
+COUNTOBJECTS="`dirname $0`/d1listobjects -g"
+raw=""
 
 
 usage()
@@ -31,6 +34,7 @@ OPTIONS:
   -h  Show this message
   -b  Base URL of node being contacted to read format list ($baseurl)
   -T  Show only formatType specified (METADATA, DATA, RESOURCE)
+  -c  Show number of objects matching format (slow)
   -r  Show raw response
   -v  Be a bit more verbose
   -V  Show verson (${VERSION}) and exit.
@@ -46,7 +50,7 @@ show_version()
 
 
 ## Parse command line
-while getopts "hvVrb:T:" OPTION
+while getopts "hvVrcb:T:" OPTION
 do
     case $OPTION in
       h) usage; exit 1;;
@@ -54,6 +58,7 @@ do
       T) formatType=$OPTARG;;
       v) verbose=1;;
       r) raw=1;;
+      c) countObjects=1;;
       V) show_version exit 1;;
       \?) usage; exit 1;;
     esac
@@ -84,9 +89,22 @@ if [[ ${status} == "200" ]]; then
     xml fo ${tmpfile}
   else
     if [[ -z ${formatType} ]]; then
-      ${XML} sel -t -m "//objectFormat" \
-                 -v "substring(concat(formatType,'          '),1,10)" \
-                 -v "formatId" -n ${tmpfile}
+      if [[ -n ${countObjects} ]]; then
+        FORMATS=$( ${XML} sel -t -m "//objectFormat" -v "formatId" -n ${tmpfile} )
+        for OFORMAT in ${FORMATS}; do 
+          OCMD="${COUNTOBJECTS} -F ${OFORMAT}"
+          if [[ -n ${verbose} ]]; then
+            echo "Fetching: ${OFORMAT}"
+            echo "OCMND = ${OCMD}"
+          fi
+          OCOUNT=$(${OCMD})
+          echo ${OCOUNT},\"${OFORMAT}\"
+        done
+      else  
+        ${XML} sel -t -m "//objectFormat" \
+                   -v "substring(concat(formatType,'          '),1,10)" \
+                   -v "formatId" -n ${tmpfile}
+      fi
     else
       ${XML} sel -t -m "//objectFormat[formatType='${formatType}']" \
                  -v "substring(concat(formatType,'          '),1,10)" \

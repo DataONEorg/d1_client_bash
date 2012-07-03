@@ -15,6 +15,7 @@ VERSION="Version 0.0.3"
 XML="/usr/local/bin/xml"
 TMP="/tmp"
 NAMESPACE="d=http://ns.dataone.org/service/types/v1"
+URLENCODE="`dirname $0`/urlencode"
 HTTP="https"
 ocount=3
 ostart=0
@@ -24,6 +25,7 @@ raw=""
 nagios=""
 idsonly=""
 offsetminutes=""
+objectFormat=""
 
 OFFSETMINUTES=""
 date_minutes_offset()
@@ -51,6 +53,7 @@ OPTIONS:
   -h  Show this message
   -S  Starting index for first entry (${ostart})
   -C  Number of entries to retrieve (${ocount})
+  -F  Restrict to specified object format 
   -b  BaseURL of node to retrieve objects from (${baseurl})
   -H  Host name, must set -P node type when used (overrides -b)
   -P  Base path for node, e.g. "/knb/d1/mn", "/mn", or "/cn"
@@ -71,7 +74,7 @@ show_version()
 }
 
 
-while getopts “hvrgTVIS:C:b:H:P:M:” OPTION
+while getopts “hvrgTVIS:C:b:H:P:M:F:” OPTION
 do
   case $OPTION in 
     h) usage; exit 1;;
@@ -86,6 +89,7 @@ do
     H) host=$OPTARG;;
     P) basePath=$OPTARG;;
     M) offsetminutes=$OPTARG;;
+    F) objectFormat=$OPTARG;;
     T) HTTP="http";;
     I) idsonly=1;;
     V) show_version; exit 1;;
@@ -115,6 +119,11 @@ else
   url="${baseurl}/v1/object?start=${ostart}&count=${ocount}"
 fi
 
+if [[ -n ${objectFormat} ]]; then
+  objectFormat=$(echo ${objectFormat} | ${URLENCODE})
+  url="${url}&formatId=${objectFormat}"
+fi
+
 tmpfile="${TMP}/$(basename $0).$$.xml"
 CMD="curl -k -s -w \"%{http_code}\" -o \"${tmpfile}\" \"${url}\""
 if [[ -n ${verbose} ]]; then
@@ -124,6 +133,7 @@ if [[ -n ${verbose} ]]; then
 fi
 
 EC=3
+#status=$(eval ${CMD})
 status=$(eval ${CMD})
 
 if [[ ${status} == "200" ]]; then
@@ -131,7 +141,7 @@ if [[ ${status} == "200" ]]; then
   if [[ -n ${raw} ]]; then
     ${XML}  fo ${tmpfile}
   elif [[ -n ${nagios} ]]; then
-    nrecs=$( ${XML} sel -N "${NAMESPACE}" \
+    nrecs=$(${XML} sel -N "${NAMESPACE}" \
       -t -m "//d:objectList" -v "@total" ${tmpfile})
     if [[ ${ocount} -eq 0 ]]; then
       EC=1
