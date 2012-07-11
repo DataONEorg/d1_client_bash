@@ -1,0 +1,78 @@
+#!/bin/bash
+
+## Script to generate a table indicating the differences in PIDs available
+## on the three production CNs
+##
+## Dave V. 20120705
+##
+
+UNM="https://cn-unm-1.dataone.org/cn"
+UCSB="https://cn-ucsb-1.dataone.org/cn"
+ORC="https://cn-orc-1.dataone.org/cn"
+TMP="."
+LISTOBJECTS="$(dirname $0)/d1listobjects"
+COMPARE="grep -vhFxf"
+
+usage()
+{
+cat << EOF
+
+usage $(basename $0)
+
+Generate a report listing identifier differences between CNs.
+
+EOF
+}
+
+
+
+pids_unm="${TMP}/unm_pids.txt"
+pids_orc="${TMP}/orc_pids.txt"
+pids_ucsb="${TMP}/ucsb_pids.txt"
+
+echo "Retrieving UNM to $pids_unm ..."
+$LISTOBJECTS -b $UNM -I -C 999999 | sort > $pids_unm
+echo "UNM: $(wc -l $pids_unm)"
+
+echo "Retrieving ORC..."
+$LISTOBJECTS -b $ORC -I -C 999999 | sort > ${pids_orc}
+echo "ORC: $(wc -l $pids_orc)"
+
+echo "Retrieving UCSB..."
+$LISTOBJECTS -b $UCSB -I -C 999999 | sort > ${pids_ucsb}
+echo "UCSB: $(wc -l $pids_ucsb)"
+
+
+echo "Generating results.txt..."
+echo "#PIDs in UCSB not in UNM"  > ${TMP}/results.txt
+echo "#=======================" >> ${TMP}/results.txt
+$COMPARE $pids_unm $pids_ucsb >> ${TMP}/results.txt
+
+echo "#" >> results.txt
+echo "#PIDs in UNM not in UCSB" >> ${TMP}/results.txt
+echo "#=======================" >> ${TMP}/results.txt
+$COMPARE $pids_ucsb $pids_unm >> ${TMP}/results.txt
+
+
+echo "#" >> results.txt
+echo "#PIDs in ORC not in UNM"  >> ${TMP}/results.txt
+echo "#======================"  >> ${TMP}/results.txt
+$COMPARE $pids_unm $pids_orc  >> ${TMP}/results.txt
+
+echo "#" >> results.txt
+echo "#PIDs in UNM not in ORC"  >> ${TMP}/results.txt
+echo "#======================"  >> ${TMP}/results.txt
+$COMPARE $pids_orc $pids_unm  >> ${TMP}/results.txt
+
+
+echo "#" >> results.txt
+echo "#PIDs in UCSB not in ORC"  >> ${TMP}/results.txt
+echo "#======================+"  >> ${TMP}/results.txt
+$COMPARE $pids_orc $pids_ucsb  >> ${TMP}/results.txt
+
+echo "#" >> results.txt
+echo "#PIDs in ORC not in UCSB"  >> ${TMP}/results.txt
+echo "#======================="  >> ${TMP}/results.txt
+$COMPARE $pids_ucsb $pids_orc  >> ${TMP}/results.txt
+
+echo "Done."
