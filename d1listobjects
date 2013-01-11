@@ -8,10 +8,13 @@
 #
 # Example: count objects that are not publicly readable on a Node:
 #
-# for id in $(d1listobjects -b $CNSB1 -I -C 300); do UPID=$(echo $id | urlencode); curl -k -s -w "%{http_code}" -o "/tmp/sysmeta.xml" "$CNSB1/v1/meta/${UPID}"; echo ", $id, $OT"; done | grep "401," | wc -l 
+# for id in $(d1listobjects -b $CNSB1 -I -C 300); do \
+#  UPID=$(echo $id | urlencode); curl -k -s -w "%{http_code}" \
+#  -o "/tmp/sysmeta.xml" "$CNSB1/v1/meta/${UPID}"; echo ", $id, $OT"; \
+#  done | grep "401," | wc -l 
 
-VERSION="Version 0.0.3"
-
+#== Initialize a few things ==
+VERSION="Version 0.1.0"
 XML="/usr/local/bin/xml"
 TMP="/tmp"
 NAMESPACE="d=http://ns.dataone.org/service/types/v1"
@@ -26,9 +29,12 @@ nagios=""
 idsonly=""
 offsetminutes=""
 objectFormat=""
-
+fromdate=""
 OFFSETMINUTES=""
-date_minutes_offset()
+EC=1
+
+#== various routines ==
+function date_minutes_offset()
 {
   #for os x
   UN=$(uname)
@@ -40,7 +46,7 @@ date_minutes_offset()
   fi
 }
 
-usage()
+function usage()
 {
 cat << EOF
 
@@ -61,20 +67,102 @@ OPTIONS:
   -v  Be a bit more verbose
   -g  Just return number of objects, overrides other params
   -M  If set, then only show objects from now to specified minutes ago
-  -T  Don't use SSL (i.e. http rather than https)
+  -D  If set, then only show objected created since specified date. Overrides -M
+  -T  Do not use SSL (i.e. http rather than https)
   -I  Show identifiers only (default: no)
  
 EOF
 }
 
 
-show_version()
+function show_version()
 {
   echo ${VERSION}
 }
 
 
-while getopts “hvrgTVIS:C:b:H:P:M:F:” OPTION
+function add_url_kv()
+# $1 = URL
+# $2 = Key
+# $3 = Value (will be URL encoded)
+# updates ${URL}
+{
+  delim="?"
+  if [[ "${1}" == *\?* ]]; then
+    delim="&"
+  fi
+  uval=$(echo $3 | ${URLENCODE})
+  URL="${1}${delim}${2}=${uval}"
+}
+
+
+function get_object_list()
+# expects:
+#  $1 : listobjects url without the start and count parameters
+#  $2 : destination file
+#  $3 : start
+#  $4 : count
+# updates ${status}
+{
+   add_url_kv ${1} "start" ${3}
+   add_url_kv ${URL} "count" ${4}
+   #_url="${1}&start=${3}&count=${4}"
+   _cmd="curl -k -s -w \"%{http_code}\" -o \"${2}\" \"${URL}\""
+   if [[ -n ${verbose} ]]; then
+     echo "URL     : ${URL}"
+     echo "Command : ${_cmd}"
+     echo
+   fi
+   EC=3
+   status=$(eval ${_cmd})
+}
+
+
+function raw_objectlist_response()
+# $1 : URL
+# $2 : tmpfile
+# $3 : start
+# $4 : count
+{
+   get_object_list ${1} ${2} ${3} ${4}
+   if [[ ${status} == "200" ]]; then
+     EC=0
+     ${XML} fo ${2}
+   fi
+}
+
+
+function generate_nagios_output() 
+# $1 : URL
+# $2 : tmpfile
+{
+  get_object_count ${1} ${2}
+  if [[ ${status} -eq "200" ]]; then
+    EC=0
+    if [[ ${object_count} -eq 0 ]]; then
+      EC=1
+    fi
+  fi
+  echo ${object_count}
+}
+
+
+function get_object_count() 
+# $1 = URL
+# $2 = tmpfile
+# sets object_count
+{
+  object_count=0
+  get_object_list ${1} ${2} 0 0
+  if [[ ${status} == "200" ]]; then
+    object_count=$(${XML} sel -N "${NAMESPACE}" \
+      -t -m "//d:objectList" -v "@total" ${2})
+  fi
+}
+
+
+# == Main ==
+while getopts "hvrgTVIS:C:b:H:P:M:F:D:" OPTION
 do
   case $OPTION in 
     h) usage; exit 1;;
@@ -89,6 +177,7 @@ do
     H) host=$OPTARG;;
     P) basePath=$OPTARG;;
     M) offsetminutes=$OPTARG;;
+    D) fromdate=$OPTARG;;
     F) objectFormat=$OPTARG;;
     T) HTTP="http";;
     I) idsonly=1;;
@@ -105,68 +194,71 @@ if [[ -n ${host} ]]; then
   fi
   baseurl="${HTTP}://${host}${basePath}"
 fi
-
 if [[ -z ${baseurl} ]]; then
   echo "NODE, -b, or -H and -P required"
   exit 1
 fi
 
-if [[ -n ${offsetminutes} ]]; then
-  date_minutes_offset $offsetminutes
-  dd=$(date ${OFFSETMINUTES} -u +%Y-%m-%dT%H:%M:%S)
-  url="${baseurl}/v1/object?start=${ostart}&count=${ocount}&fromDate=${dd}"
+URL="${baseurl}/v1/object"
+if [[ -n ${fromdate} ]]; then
+  add_url_kv ${URL} "fromDate" ${fromdate}
 else
-  url="${baseurl}/v1/object?start=${ostart}&count=${ocount}"
+  if [[ -n ${offsetminutes} ]]; then
+    date_minutes_offset $offsetminutes
+    dd=$(date ${OFFSETMINUTES} -u +%Y-%m-%dT%H:%M:%S)
+    add_url_kv ${URL} "fromDate" ${dd}
+  fi
 fi
 
 if [[ -n ${objectFormat} ]]; then
-  objectFormat=$(echo ${objectFormat} | ${URLENCODE})
-  url="${url}&formatId=${objectFormat}"
+  add_url_kv "${URL}" "objectFormat" "${objectFormat}"
 fi
 
 tmpfile="${TMP}/$(basename $0).$$.xml"
-CMD="curl -k -s -w \"%{http_code}\" -o \"${tmpfile}\" \"${url}\""
-if [[ -n ${verbose} ]]; then
-  echo "URL     : ${url}"
-  echo "Command : ${CMD}"
-  echo
-fi
 
-EC=3
-#status=$(eval ${CMD})
-status=$(eval ${CMD})
-
-if [[ ${status} == "200" ]]; then
-  EC=0
-  if [[ -n ${raw} ]]; then
-    ${XML}  fo ${tmpfile}
-  elif [[ -n ${nagios} ]]; then
-    nrecs=$(${XML} sel -N "${NAMESPACE}" \
-      -t -m "//d:objectList" -v "@total" ${tmpfile})
-    if [[ ${ocount} -eq 0 ]]; then
-      EC=1
-    fi
-    echo ${nrecs}
-  else 
-    if [[ -n ${idsonly} ]]; then
-      ${XML} sel -N "${NAMESPACE}" \
-         -t -m "//objectInfo" -v "identifier" -n ${tmpfile} 
-    else
-      ${XML} sel -N "${NAMESPACE}" \
-        -t -m "//d:objectList" -o "Total=" -v "@total" -n \
-        -t -m "//objectInfo" \
-           -v "substring(concat(size,'          '),1,10)" \
-           -v "identifier" -o "  "\
-           -v "formatId" \
-           -n ${tmpfile}
-    fi
-  fi
+if [[ -n ${raw} ]]; then
+  raw_objectlist_response ${URL} ${tmpfile} ${ostart} ${ocount}
+elif [[ -n ${nagios} ]]; then 
+  generate_nagios_output ${URL} ${tmpfile} 0 0
 else
-  echo "ERROR   : Status of response = ${status}"
-  if [[ -n ${verbose} ]]; then
-    cat ${tmpfile}
+  STARTURL=${URL}
+  GOT=0
+  NGOT=0
+  get_object_count ${URL} ${tmpfile}
+  if [[ ${ocount} -gt ${object_count} ]]; then
+    ocount=${object_count}
   fi
-  EC=2
+  TOGET=${ocount}
+  while [ $GOT -lt ${TOGET} ]; do
+    get_object_list ${STARTURL} ${tmpfile} ${GOT} ${TOGET}
+    if [[ ${status} == "200" ]]; then
+      EC=0
+      NGOT=$(${XML} sel -N "${NAMESPACE}" \
+             -t -m "//d:objectList" -v "@count" ${tmpfile})
+      GOT=$(expr ${GOT} + ${NGOT})
+      TOGET=$(expr ${ocount} - ${GOT})
+      if [[ -n ${idsonly} ]]; then
+        ${XML} sel -N "${NAMESPACE}" \
+           -t -m "//objectInfo" -v "identifier" -n ${tmpfile} 
+      else
+        ${XML} sel -N "${NAMESPACE}" \
+          -t -m "//d:objectList" -o "Total=" -v "@total" -n \
+          -t -m "//objectInfo" \
+             -v "substring(concat(size,'          '),1,10)" \
+             -v "identifier" -o "  "\
+             -v "formatId" \
+             -n ${tmpfile}
+      fi
+    else
+      echo "ERROR   : Status of response = ${status}"
+      if [[ -n ${verbose} ]]; then
+        cat ${tmpfile}
+      fi
+      EC=2
+      break;
+    fi
+  done
 fi
+
 rm ${tmpfile}
 exit ${EC}
