@@ -1,0 +1,128 @@
+#!/bin/bash
+#
+# Register a member node in a DataONE environment
+#
+
+VERSION="Version 0.0.3"
+
+#Location of xmlstarlet command
+XML="/usr/local/bin/xml"
+TMP="/tmp"
+baseurl=$NODE
+tmpfile="${TMP}/$(basename $0).$$.xml"
+nodefile="./node.xml"
+clientfile="./client.pem"
+keepresp=""
+
+usage()
+{
+cat << EOF
+
+usage: $(basename $0) OPTIONS
+
+Register a Member Node in a (Coordinating) Node environment specified by the NODE
+environment variable or from the -b parameter.
+
+OPTIONS:
+
+  -h  Show this message
+  -b  Base URL of Coordinating Node being contacted to register the MN (${baseurl})
+  -f  The path to the MN node XML file (default ./node.xml)
+  -E  The path to the MN client SSL certificate PEM (default ./client.pem)
+  -k  Keep response (default is to delete on exit)
+  -D  Destination for response (${tmpfile})
+  -r  Show raw response
+  -v  Be a bit more verbose
+  -V  Show version (${VERSION})
+ 
+EOF
+}
+
+show_version()
+{
+  echo ${VERSION}
+}
+
+
+## Parse command line
+while getopts "hvVrkfEb:D:" OPTION
+do
+    case $OPTION in
+      h) usage; exit 1;;
+      b) baseurl=$OPTARG;;
+      f) nodefile=$OPTARG;;
+      E) clientfile=$OPTARG;;
+      k) keepresp=1;;
+      D) tmpfile=$OPTARG;;
+      v) verbose=1;;
+      r) raw=1;;
+      V) show_version; exit 1;;
+      \?) usage; exit 1;;
+    esac
+done
+
+if [[ -z ${baseurl} ]]; then
+  echo "ERROR   : A CN Base URL must be provided by -b or the NODE environment variable"
+  exit 1
+ fi
+
+if [[ ! -r ${nodefile} ]]; then
+    echo "ERROR   : A node XML file must be provided by with the -f option"
+  exit 1
+fi
+
+if [[ ! -r ${clientfile} ]]; then
+    echo "ERROR   : A client SSL certificate file must be provided by with the -E option"
+  exit 1
+fi
+
+private_count=$(grep "PRIVATE" ${clientfile} | wc -l);
+cert_count=$(grep "CERTIFICATE" ${clientfile} | wc -l);
+
+if [[ ! $private_count -eq 2 ]]; then
+    echo "ERROR   : The file ${clientfile} does not contain a 'CERTIFICATE' section."
+    echo "          Please concatenate the MN client SSL certificate and key into this file"
+    exit 1
+fi
+
+if [[ ! $private_count -eq 2 ]]; then
+    echo "ERROR   : The file ${clientfile} does not contain a 'PRIVATE KEY'."
+    echo "          Please concatenate the MN client SSL certificate and key into this file"
+    exit 1
+fi
+
+## REST endpoint URL relative to base url
+url="${baseurl}/v1/node"
+
+if [[ -n ${verbose} ]]; then
+  echo "URL     : ${url}"
+fi
+
+## Save response to temp file, capture HTTP status
+CMD="curl -X POST -E ${clientfile} -k -s -w \
+    \"%{http_code}\" -o \"${tmpfile}\" -f \"node=@${nodefile}\" \
+    \"${url}\""
+if [[ -n ${verbose} ]]; then
+  echo "Command : ${CMD}"
+  echo
+fi
+
+status=$(eval ${CMD})
+
+EC=0
+if [[ ${status} == "200" ]]; then
+  if [[ -n ${raw} ]]; then
+    echo ${tmpfile}
+  fi
+else
+  EC=1
+  echo "ERROR   : Status of response = ${status}"
+  if [[ -n ${verbose} ]]; then
+    cat ${tmpfile}
+  fi
+fi
+if [[ -z ${keepresp} ]]; then
+  rm ${tmpfile}
+fi
+exit $EC
+
