@@ -64,13 +64,11 @@ done
 if [[ -z ${baseurl} ]]; then
   echo "ERROR   : A CN Base URL must be provided by -b or the NODE environment variable"
   echo
-  echo "DataONE environments include:"
-  cat << EOF
-DEVELOPMENT: https://cn-dev.test.dataone.org/cn
-SANDBOX    : https://cn-sandbox.test.dataone.org/cn
-STAGING    : https://cn-stage.test.dataone.org/cn
-PRODUCTION : https://cn.dataone.org/cn
-EOF    
+  echo "DataONE environments and base URLs include:"
+  echo -e "DEVELOPMENT:\thttps://cn-dev.test.dataone.org/cn"
+  echo -e "SANDBOX    :\thttps://cn-sandbox.test.dataone.org/cn"
+  echo -e "STAGING    :\thttps://cn-stage.test.dataone.org/cn"
+  echo -e "PRODUCTION :\thttps://cn.dataone.org/cn"
   exit 1
  fi
 
