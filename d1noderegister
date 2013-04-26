@@ -136,6 +136,8 @@ if [[ ${status} -eq 200 ]]; then
 else
     EC=1
     echo "ERROR   : Status of response = ${status}"
+    message=$(${XML} sel -t -v "//description" ${tmpfile})
+    echo $message
     if [[ -n ${verbose} ]]; then
       cat ${tmpfile}
     fi
