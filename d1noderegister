@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Register a member node in a DataONE environment
-#
+# 
+# (if xmlstarlet is installed, it will parse and display any xml in the response)
 
 VERSION="Version 0.0.3"
 
@@ -135,12 +136,24 @@ if [[ ${status} -eq 200 ]]; then
     fi
 else
     EC=1
-    echo "ERROR   : Status of response = ${status}"
-    message=$(${XML} sel -t -v "//description" ${tmpfile})
-    echo $message
+    echo "ERROR  : Status of response = ${status}"
+    echo "         Response text      = ${tmpfile}"
+
+    # parse the xml of the response only if xmlstarlet is installed                                                     
+    # and the raw flag is not specified                                                                                 
+    if [[ ${raw} -eq 1 ]]; then
+            cat ${tmpfile}
+    else
+        if [[ -x ${XML} ]]; then
+            message=$(${XML} sel -t -v "//description" ${tmpfile})
+            echo message
+        fi
+    fi
+
     if [[ -n ${verbose} ]]; then
       cat ${tmpfile}
     fi
 fi
 exit $EC
+
 
