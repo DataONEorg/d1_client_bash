@@ -67,6 +67,7 @@ if [[ -z ${baseurl} ]]; then
     echo -e "DEVELOPMENT:\thttps://cn-dev.test.dataone.org/cn"
     echo -e "SANDBOX    :\thttps://cn-sandbox.test.dataone.org/cn"
     echo -e "STAGING    :\thttps://cn-stage.test.dataone.org/cn"
+    echo -e "STAGING2   :\thttps://cn-stage-2.test.dataone.org/cn"
     echo -e "PRODUCTION :\thttps://cn.dataone.org/cn"
     echo
     usage
@@ -91,7 +92,7 @@ private_count=$(grep "PRIVATE" ${clientfile} | wc -l);
 cert_count=$(grep "CERTIFICATE" ${clientfile} | wc -l);
 
 if [[ ! $private_count -eq 2 ]]; then
-    echo "ERROR   : The file ${clientfile} does not contain a 'CERTIFICATE' section."
+    echo "ERROR   : The file ${clientfile} does not contain a 'PRIVATE KEY' section."
     echo "          Please concatenate the MN client SSL certificate and key into this file."
     echo
     usage
@@ -99,7 +100,7 @@ if [[ ! $private_count -eq 2 ]]; then
 fi
 
 if [[ ! $cert_count -eq 2 ]]; then
-    echo "ERROR   : The file ${clientfile} does not contain a 'PRIVATE KEY' section."
+    echo "ERROR   : The file ${clientfile} does not contain a 'CERTIFICATE' section."
     echo "          Please concatenate the MN client SSL certificate and key into this file."
     echo
     usage
