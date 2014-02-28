@@ -211,7 +211,7 @@ else
 fi
 
 if [[ -n ${objectFormat} ]]; then
-  add_url_kv "${URL}" "objectFormat" "${objectFormat}"
+  add_url_kv "${URL}" "formatId" "${objectFormat}"
 fi
 
 tmpfile="${TMP}/$(basename $0).$$.xml"
