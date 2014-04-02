@@ -112,7 +112,11 @@ if [[ -n ${verbose} ]]; then
     echo "URL     : ${url}"
 fi
 
-nodeid=$(${XML} sel -t -v "//identifier" ${nodefile})
+if [[ -x ${XML} ]]; then
+    nodeid=$(${XML} sel -t -v "//identifier" ${nodefile})
+else
+    nodeid=$(grep identifier ${nodefile} | cut -d">" -f2 | cut -d"<" -f1);
+fi
 
 ## Save response to temp file, capture HTTP status
 CMD="curl -X PUT \
