@@ -32,6 +32,8 @@ objectFormat=""
 fromdate=""
 OFFSETMINUTES=""
 EC=1
+DEBUG=0
+showTotal=0
 
 #== various routines ==
 function date_minutes_offset()
@@ -59,6 +61,7 @@ OPTIONS:
   -h  Show this message
   -S  Starting index for first entry (${ostart})
   -C  Number of entries to retrieve (${ocount})
+  -t  Show total object count (No)
   -F  Restrict to specified object format 
   -b  BaseURL of node to retrieve objects from (${baseurl})
   -H  Host name, must set -P node type when used (overrides -b)
@@ -162,7 +165,7 @@ function get_object_count()
 
 
 # == Main ==
-while getopts "hvrgTVIS:C:b:H:P:M:F:D:" OPTION
+while getopts "hdvrgtTVIS:C:b:H:P:M:F:D:" OPTION
 do
   case $OPTION in 
     h) usage; exit 1;;
@@ -171,6 +174,8 @@ do
     b) baseurl=$OPTARG;;
     r) raw=1;;
     v) verbose=1;;
+    d) DEBUG=1;;
+    t) showTotal=1;;
     g) nagios=1;
        ocount=0;
        ostart=0;;
@@ -229,7 +234,8 @@ else
     ocount=${object_count}
   fi
   TOGET=${ocount}
-  while [ $GOT -lt ${TOGET} ]; do
+  #while [ $GOT -lt ${TOGET} ]; do
+  while (( ${TOGET} > 0 )); do
     get_object_list ${STARTURL} ${tmpfile} ${GOT} ${TOGET}
     if [[ ${status} == "200" ]]; then
       EC=0
@@ -237,18 +243,33 @@ else
              -t -m "//d:objectList" -v "@count" ${tmpfile})
       GOT=$(expr ${GOT} + ${NGOT})
       TOGET=$(expr ${ocount} - ${GOT})
-      if [[ -n ${idsonly} ]]; then
-        ${XML} sel -N "${NAMESPACE}" \
-           -t -m "//objectInfo" -v "identifier" -n ${tmpfile} 
-      else
-        ${XML} sel -N "${NAMESPACE}" \
-          -t -m "//d:objectList" -o "Total=" -v "@total" -n \
-          -t -m "//objectInfo" \
-             -v "substring(concat(size,'          '),1,10)" \
-             -v "identifier" -o "  "\
-             -v "formatId" \
-             -n ${tmpfile}
-      fi
+      if (( ${DEBUG} > 0 )); then
+	    echo "ocount=${ocount}; GOT=${GOT}; NGOT=${NGOT}; TOGET=${TOGET}"
+	  else
+	      if [[ -n ${idsonly} ]]; then
+	        ${XML} sel -N "${NAMESPACE}" \
+	           -t -m "//objectInfo" -v "identifier" -n ${tmpfile} 
+	      else
+		    if (( ${showTotal} > 0 )); then
+	  	        ${XML} sel -N "${NAMESPACE}" \
+		          -t -m "//d:objectList" -o "Total=" -v "@total" -n \
+		          -t -m "//objectInfo" \
+		             -v "substring(concat(size,'          '),1,10)" \
+		             -v "dateSysMetadataModified" -o "  "\
+		             -v "identifier" -o "  "\
+		             -v "formatId" \
+		             -n ${tmpfile}
+		    else
+	  	        ${XML} sel -N "${NAMESPACE}" \
+		          -t -m "//objectInfo" \
+		             -v "substring(concat(size,'          '),1,10)" \
+		             -v "dateSysMetadataModified" -o "  "\
+		             -v "identifier" -o "  "\
+		             -v "formatId" \
+		             -n ${tmpfile}
+			fi
+	      fi
+	  fi
     else
       echo "ERROR   : Status of response = ${status}"
       if [[ -n ${verbose} ]]; then
