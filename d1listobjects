@@ -227,7 +227,7 @@ elif [[ -n ${nagios} ]]; then
   generate_nagios_output ${URL} ${tmpfile} 0 0
 else
   STARTURL=${URL}
-  GOT=0
+  GOT=${ostart}
   NGOT=0
   get_object_count ${URL} ${tmpfile}
   if [[ ${ocount} -gt ${object_count} ]]; then

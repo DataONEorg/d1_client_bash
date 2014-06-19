@@ -20,6 +20,13 @@ node_b=""
 COMPARE="comm"
 LISTOBJECTS="$(dirname $0)/d1listobjects"
 
+echoerr() { echo "$@" 1>&2; }
+
+countrows() {
+	cr_temp=($(/usr/bin/wc -l "$1"))
+	echo ${cr_temp[0]}
+}
+
 usage()
 {
 cat << EOF
@@ -30,11 +37,11 @@ Generate a list of identifiers that are present only on each node and on both.
 
 OPTIONS:
   -h Show this message
-  -A Node A baseURL
-  -B Node B baseURL
+  -A Node A baseURL or path to PID cache file 
+  -B Node B baseURL or path to PID cache file
   -c Use comm for comparison (default)
   -d Use diff for the comparison
-  -g Use grep -vhFxf, outputting PIDs in B that are not in A
+  -g Only list PIDs in A that are not in B
   -t Use specified folder for output instead of ${TMP}
 
 EOF
@@ -48,18 +55,19 @@ do
     B) node_b=$OPTARG;;
     c) COMPARE="comm";;
     d) COMPARE="diff";;
-    g) COMPARE="grep -vhFxf";;
+    #g) COMPARE="grep -vhFxf";;
+    g) COMPARE="diff --new-line-format= --unchanged-line-format=";;
     t) TMP=$OPTARG;;
     \?) usage; exit 1;;
   esac
 done
 
 if [[ -z ${node_a} ]]; then
-  echo "baseURL for node A required."
+  echo "baseURL or path for node A required."
   exit 1;
 fi
 if [[ -z ${node_b} ]]; then
-  echo "baseURL for node B required."
+  echo "baseURL or path for node B required."
   exit 1;
 fi
 if [[ ! -d ${TMP} ]]; then
@@ -67,11 +75,22 @@ if [[ ! -d ${TMP} ]]; then
   exit 1;
 fi
 
-pids_a="${TMP}/pids_node_a.$$.txt"
-echo "PIDs from node A are in $pids_a" >/dev/stderr
-pids_b="${TMP}/pids_node_b.$$.txt"
-echo "PIDs from node B are in $pids_b" >/dev/stderr
+if [[ ${node_a} == http* ]]; then
+  pids_a="${TMP}/pids_node_a.$$.txt"
+  echoerr "PIDs from node A are in $pids_a"
+  $LISTOBJECTS -b $node_a -I -C 999999 | sort > $pids_a
+else
+  pids_a=${node_a}
+fi
+echoerr "$(countrows ${pids_a}) indentifiers in list A"
 
-$LISTOBJECTS -b $node_a -I -C 999999 | sort > $pids_a
-$LISTOBJECTS -b $node_b -I -C 999999 | sort > $pids_b
+if [[ ${node_b} == http* ]]; then
+  pids_b="${TMP}/pids_node_b.$$.txt"
+  echoerr "PIDs from node B are in $pids_b"
+  $LISTOBJECTS -b $node_b -I -C 999999 | sort > $pids_b
+else
+  pids_b=${node_b}
+fi
+echoerr "$(countrows ${pids_b}) indentifiers in list B"
+
 $COMPARE $pids_a $pids_b
