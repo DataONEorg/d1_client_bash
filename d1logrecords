@@ -1,27 +1,16 @@
 #!/bin/bash
 #
-# Calls list objects on Node and shows what comes back.
+# Calls getLogRecords on Node and shows what comes back.
 #
-# This script can be used as a nagios3 plugin, but is only really useful for
-# metrics collection rather than alerts since it just returns the number of
-# objects on a node when run in nagios mode, i.e. with -g
-#
-# Example: (slowly) count objects that are not publicly readable on a Node:
-#
-# for id in $(d1listobjects -b $CNSB1 -I -C 300); do \
-#  UPID=$(echo $id | urlencode); curl -k -s -w "%{http_code}" \
-#  -o "/tmp/sysmeta.xml" "$CNSB1/v1/meta/${UPID}"; echo ", $id, $OT"; \
-#  done | grep "401," | wc -l
-#
-# Example: create a sorted list of identifiers:
+# Example: Retrieve all log records within the last hour
 #
 #  export NODE="https://cn.dataone.org/cn"
-#  d1listobjects -I | sort
+#  d1logrecords -c cnode.pem -M 60
 #
-# Example: Retrieve all object identifiers added within the last hour
+# Example: Retrieve log records since 2014-10-01T00:00:00 for create events
 #
-#  export NODE="https://cn.dataone.org/cn"
-#  d1listobjects -I -M 60
+# export NODE="https://cn.dataone.org/cn"
+# d1logrecords -D "2014-10-01T00:00:00" -E create -c cnode.pem
 #
 
 #== Initialize a few things ==
@@ -41,10 +30,14 @@ idsonly=""
 offsetminutes=""
 objectFormat=""
 fromdate=""
+todate=""
 OFFSETMINUTES=""
 EC=1
 DEBUG=0
 showTotal=0
+eventtype=""
+certificate=""
+exportdest=""
 
 #== various routines ==
 function date_minutes_offset()
@@ -70,8 +63,10 @@ variable or -n parameter.
 
 OPTIONS:
   -h  Show this message
+  -c  Client certificate to use, .pem format (none)
   -S  Starting index for first entry (${ostart})
   -C  Number of entries to retrieve (${ocount})
+  -E  Event to retrieve (all records)
   -t  Show total object count (No)
   -F  Restrict to specified object format 
   -b  BaseURL of node to retrieve objects from (${baseurl})
@@ -79,12 +74,12 @@ OPTIONS:
   -P  Base path for node, e.g. "/knb/d1/mn", "/mn", or "/cn"
   -r  Show raw output instead of extracting pieces
   -v  Be a bit more verbose
-  -g  Just return number of objects, overrides other params
-  -M  If set, then only show objects from now to specified minutes ago
-  -D  If set, then only show objected created since specified date. Overrides -M
+  -g  Just return number of records, overrides other params
+  -M  If set, then only show records from now to specified minutes ago
+  -B  If set, then only show records since specified date. Overrides -M
+  -D  if set, then only show records up to specified date.
+  -X  Extract logRecord entries stdout.
   -T  Do not use SSL (i.e. http rather than https)
-  -I  Show identifiers only (default: no)
- 
 EOF
 }
 
@@ -92,6 +87,11 @@ EOF
 function show_version()
 {
   echo ${VERSION}
+}
+
+
+function echoerr() {
+  echo "$@" 1>&2;
 }
 
 
@@ -110,9 +110,9 @@ function add_url_kv()
 }
 
 
-function get_object_list()
+function get_log_list()
 # expects:
-#  $1 : listobjects url without the start and count parameters
+#  $1 : getLogRecords url without the start and count parameters
 #  $2 : destination file
 #  $3 : start
 #  $4 : count
@@ -121,24 +121,24 @@ function get_object_list()
    add_url_kv ${1} "start" ${3}
    add_url_kv ${URL} "count" ${4}
    #_url="${1}&start=${3}&count=${4}"
-   _cmd="curl -k -s -w \"%{http_code}\" -o \"${2}\" \"${URL}\""
+   _cmd="curl -k -s --cert ${certificate} -w \"%{http_code}\" -o \"${2}\" \"${URL}\""
    if [[ -n ${verbose} ]]; then
-     echo "URL     : ${URL}"
-     echo "Command : ${_cmd}"
-     echo
+     echoerr "URL     : ${URL}"
+     echoerr "Command : ${_cmd}"
+     echoerr
    fi
    EC=3
    status=$(eval ${_cmd})
 }
 
 
-function raw_objectlist_response()
+function raw_loglist_response()
 # $1 : URL
 # $2 : tmpfile
 # $3 : start
 # $4 : count
 {
-   get_object_list ${1} ${2} ${3} ${4}
+   get_log_list ${1} ${2} ${3} ${4}
    if [[ ${status} == "200" ]]; then
      EC=0
      ${XML} fo ${2}
@@ -150,33 +150,33 @@ function generate_nagios_output()
 # $1 : URL
 # $2 : tmpfile
 {
-  get_object_count ${1} ${2}
+  get_log_count ${1} ${2}
   if [[ ${status} -eq "200" ]]; then
     EC=0
-    if [[ ${object_count} -eq 0 ]]; then
+    if [[ ${log_count} -eq 0 ]]; then
       EC=1
     fi
   fi
-  echo ${object_count}
+  echo ${log_count}
 }
 
 
-function get_object_count() 
+function get_log_count() 
 # $1 = URL
 # $2 = tmpfile
 # sets object_count
 {
-  object_count=0
-  get_object_list ${1} ${2} 0 0
+  log_count=0
+  get_log_list ${1} ${2} 0 0
   if [[ ${status} == "200" ]]; then
-    object_count=$(${XML} sel -N "${NAMESPACE}" \
-      -t -m "//d:objectList" -v "@total" ${2})
+    log_count=$(${XML} sel -N "${NAMESPACE}" \
+      -t -m "//d:log" -v "@total" ${2})
   fi
 }
 
 
 # == Main ==
-while getopts "hdvrgtTVIS:C:b:H:P:M:F:D:" OPTION
+while getopts "hdvrgtTVIS:C:b:H:P:M:F:D:B:X:c:E:" OPTION
 do
   case $OPTION in 
     h) usage; exit 1;;
@@ -193,11 +193,15 @@ do
     H) host=$OPTARG;;
     P) basePath=$OPTARG;;
     M) offsetminutes=$OPTARG;;
-    D) fromdate=$OPTARG;;
+    B) fromdate=$OPTARG;;
+    D) todate=$OPTARG;;
     F) objectFormat=$OPTARG;;
     T) HTTP="http";;
     I) idsonly=1;;
     V) show_version; exit 1;;
+    c) certificate=$OPTARG;;
+    E) eventtype=$OPTARG;;
+    X) exportdest=$OPTARG;;
     \?) usage; exit 1;;
     esac
 done
@@ -205,17 +209,25 @@ done
 # Set baseurl if host and base path provided
 if [[ -n ${host} ]]; then
   if [[ -z ${basePath} ]]; then
-    echo "-P base path required with -H host"
+    echoerr "-P base path required with -H host"
     exit 3
   fi
   baseurl="${HTTP}://${host}${basePath}"
 fi
 if [[ -z ${baseurl} ]]; then
-  echo "NODE, -b, or -H and -P required"
+  echoerr "NODE, -b, or -H and -P required"
   exit 1
 fi
 
-URL="${baseurl}/v1/object"
+if [[ -z ${certificate} ]]; then
+  echoerr "Certificate in .pem format required."
+  exit 1
+fi
+
+URL="${baseurl}/v1/log"
+if [[ -n ${todate} ]]; then
+  add_url_kv ${URL} "toDate" ${todate}
+fi
 if [[ -n ${fromdate} ]]; then
   add_url_kv ${URL} "fromDate" ${fromdate}
 else
@@ -226,6 +238,10 @@ else
   fi
 fi
 
+if [[ -n ${eventtype} ]]; then
+  add_url_kv ${URL} "event" ${eventtype}
+fi
+
 if [[ -n ${objectFormat} ]]; then
   add_url_kv "${URL}" "formatId" "${objectFormat}"
 fi
@@ -233,25 +249,25 @@ fi
 tmpfile="${TMP}/$(basename $0).$$.xml"
 
 if [[ -n ${raw} ]]; then
-  raw_objectlist_response ${URL} ${tmpfile} ${ostart} ${ocount}
+  raw_loglist_response ${URL} ${tmpfile} ${ostart} ${ocount}
 elif [[ -n ${nagios} ]]; then 
   generate_nagios_output ${URL} ${tmpfile} 0 0
 else
   STARTURL=${URL}
   GOT=${ostart}
   NGOT=0
-  get_object_count ${URL} ${tmpfile}
-  if [[ ${ocount} -gt ${object_count} ]]; then
-    ocount=${object_count}
+  get_log_count ${URL} ${tmpfile}
+  if [[ ${ocount} -gt ${log_count} ]]; then
+    ocount=${log_count}
   fi
   TOGET=${ocount}
   #while [ $GOT -lt ${TOGET} ]; do
   while (( ${TOGET} > 0 )); do
-    get_object_list ${STARTURL} ${tmpfile} ${GOT} ${TOGET}
+    get_log_list ${STARTURL} ${tmpfile} ${GOT} ${TOGET}
     if [[ ${status} == "200" ]]; then
       EC=0
       NGOT=$(${XML} sel -N "${NAMESPACE}" \
-             -t -m "//d:objectList" -v "@count" ${tmpfile})
+             -t -m "//d:log" -v "@count" ${tmpfile})
       GOT=$(expr ${GOT} + ${NGOT})
       TOGET=$(expr ${ocount} - ${GOT})
       if (( ${DEBUG} > 0 )); then
@@ -259,30 +275,27 @@ else
 	  else
 	      if [[ -n ${idsonly} ]]; then
 	        ${XML} sel -N "${NAMESPACE}" \
-	           -t -m "//objectInfo" -v "identifier" -n ${tmpfile} 
+	           -t -m "//logEntry" -v "identifier" -n ${tmpfile} 
 	      else
-		    if (( ${showTotal} > 0 )); then
+		    if [[ -n ${exportdest} ]]; then
 	  	        ${XML} sel -N "${NAMESPACE}" \
-		          -t -m "//d:objectList" -o "Total=" -v "@total" -n \
-		          -t -m "//objectInfo" \
-		             -v "substring(concat(size,'          '),1,10)" \
-		             -v "dateSysMetadataModified" -o "  "\
-		             -v "identifier" -o "  "\
-		             -v "formatId" \
+		          -t -m "//logEntry" \
+		             -c . \
 		             -n ${tmpfile}
 		    else
 	  	        ${XML} sel -N "${NAMESPACE}" \
-		          -t -m "//objectInfo" \
-		             -v "substring(concat(size,'          '),1,10)" \
-		             -v "dateSysMetadataModified" -o "  "\
+		          -t -m "//logEntry" \
+		             -v "entryId" -o " "\
+		             -v "event" -o " "\
+		             -v "dateLogged" -o "  "\
 		             -v "identifier" -o "  "\
-		             -v "formatId" \
+		             -v "nodeIdentifier" \
 		             -n ${tmpfile}
 			fi
 	      fi
 	  fi
     else
-      echo "ERROR   : Status of response = ${status}"
+      echoerr "ERROR   : Status of response = ${status}"
       if [[ -n ${verbose} ]]; then
         cat ${tmpfile}
       fi
