@@ -2,7 +2,7 @@
 #
 # Show system metadata for an object.
 
-VERSION="Version 0.0.2"
+VERSION="Version 0.0.3"
 NAMESPACE="d=http://ns.dataone.org/service/types/v1"
 TMP="/tmp"
 
@@ -17,6 +17,7 @@ raw=""
 verbose=""
 sysmdest="${TMP}/sysmeta.$$.xml"
 keepSysm=""
+testOnly=""
 
 usage()
 {
@@ -36,7 +37,7 @@ OPTIONS:
   -V  Show version and exit (${VERSION})
   -Y  File name for saved response document (${sysmdest})
   -k  Keep response document (default is to delete on exit)
- 
+  -t  Test if system metadat can be retrieved, write out return status. 
 EOF
 }
 
@@ -46,7 +47,7 @@ show_version()
   echo ${VERSION}
 }
 
-while getopts "hvVrkb:Y:" OPTION
+while getopts "hvVrktb:Y:" OPTION
 do
     case $OPTION in
       h) usage; exit 1;;
@@ -56,6 +57,7 @@ do
       V) show_version; exit 1;;
       Y) sysmDest=$OPTARG;;
       k) keepSysm=1;;
+      t) testOnly=1;;
       \?) usage; exit 1;;
     esac
 done
@@ -83,6 +85,10 @@ if [[ -n ${verbose} ]]; then
 fi
 
 status=$(eval ${CMD})
+if [[ -n ${testOnly} ]]; then
+  echo ${status}
+  exit
+fi
 EC=0
 if [[ ${status} -eq "200" ]]; then
   if [[ -n ${raw} ]]; then
