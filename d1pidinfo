@@ -1,0 +1,257 @@
+#!/bin/bash
+# 
+# Report on a PID
+#
+
+VERSION="1.0.0"
+APPNAME=$(basename ${0})
+APPDIR=$(pwd)
+TMPDIR="/tmp"
+URLENCODE="$(dirname ${0})/urlencode"
+XML="/usr/local/bin/xml"
+sysm_dest="${TMPDIR}/sysmeta.$$.xml"
+node_list="${TMPDIR}/nodes.$$.xml"
+VERBOSE=""
+base_url="https://cn.dataone.org/cn"
+show_obsol_chain=""
+
+# console colors, use echo -e ...
+XC='\033[0;30m' #black
+RC='\033[0;31m' #red
+GC='\033[0;32m' #green
+YC='\033[0;33m' #yellow
+BC='\033[0;34m' #blue
+MC='\033[0;35m' #magenta
+CC='\033[0;36m' #cyan
+WC='\033[0;37m' #white
+
+# Bold
+BXC='\033[1;30m' #black
+BRC='\033[1;31m' #red
+BGC='\033[1;32m' #green
+BYC='\033[1;33m' #yellow
+BBC='\033[1;34m' #blue
+BMC='\033[1;35m' #magenta
+BCC='\033[1;36m' #cyan
+BWC='\033[1;37m' #white
+
+NC='\033[0m'     #reset
+
+
+function showVersion() {
+  echo ${VERSION}
+}
+
+
+function lecho() {
+  if [[ ! -z ${3} ]]; then
+    printf ${3}
+  fi
+  if [[ ! -z ${4} ]]; then
+    printf "%20s : %${4}s\n" "${1}" "${2}"
+  else
+    printf "%20s : %s\n" "${1}" "${2}"
+  fi
+  if [[ ! -z ${3} ]]; then
+    printf ${NC}
+  fi
+}
+
+
+function log() {
+  if [[ ! -z ${VERBOSE} ]]; then
+    echo -e ${GC}"LOG: $@"${NC} 1>&2;
+  fi
+}
+
+
+function lwarn() {
+  echo -e ${RC}"WARN: $@"${NC} 1>&2;
+}
+
+
+function lerror() {
+  echo -e ${BRC}"ERROR: $@"${NC} 1>&2;
+}
+
+
+function usage() {
+cat << EOF
+${APPNAME} version ${VERSION}
+
+usage: ${APPNAME} OPTIONS PID
+
+Show information about an identifier in DataONE.
+
+OPTIONS:
+  -h  Show this message
+  -H  Show this message with examples
+  -b  Base URL of Coordinating Node to use
+  -o  Show obsolescence chain for object
+  -v  Show version and exit
+  -V  Verbose output to STDERR
+
+PID:
+  The identifier to lookup. 
+
+EOF
+}
+
+
+function usageExamples() {
+  usage
+cat << EOF
+Example - Lookup information about "knb-lter-cap.247.4" using the default 
+Coordinating Node (${base_url}):
+
+  ./${APPNAME} -o "knb-lter-cap.247.4"
+
+EOF
+}
+
+
+function loadNodes() {
+  log "Loading node list..."
+  local url="${base_url}/v1/node"
+  local CMD="curl -k -s -w \"%{http_code}\" -o \"${node_list}\" \"${url}\""
+  status=$(eval ${CMD})
+  log "HTTP status = ${status}"
+}
+
+
+function inSearchIndex() {
+  lerror "Not Implemented"
+}
+
+
+function showLocations() {
+  # $1 = system metadata
+  # $2 = encoded pid
+  local replicas=$(xml sel -t -m "//replica" -v "replicaMemberNode" -n ${1})
+  local lstatus=""
+  local sysm="${sysm_dest}.3"
+  for replica in ${replicas}; do
+    local burl=$(xml sel -t -m "//node[identifier = '${replica}']" -v "baseURL" ${node_list})
+    burl="${burl}/v1/meta/${2}"
+    log "Replica system metadata URL = ${burl}"
+    local CMD="curl -k -s -w \"%{http_code}\" -o \"${sysm}\" \"${burl}\""
+    status=$(eval ${CMD})
+    lecho "Replica" "${replica}  (HTTP: ${status})"
+  done
+}
+
+
+function followObsoletes() {
+  local xp="//obsoletes"
+  local msg="Obsoletes"
+  local indent="$(printf '%*s' "${2}" | tr ' ' "-")+"
+  if [[ ${3} == "obsoletedBy" ]]; then
+    xp="//obsoletedBy"
+    msg="Obsoleted By"
+    local indent="+$(printf '%*s' "${2}" | tr ' ' "-")"
+  fi
+  local epid="$(echo ${1} | ${URLENCODE})"
+  local url="${base_url}/v1/meta/${epid}"
+  local sysm="${sysm_dest}.2"
+  local CMD="curl -k -s -w \"%{http_code}\" -o \"${sysm}\" \"${url}\""
+  log ${CMD}
+  status=$(eval ${CMD})
+  log "HTTP status = ${status}"
+  if [[ ${status} -ne "200" ]]; then
+    lerror "Unable to access obsoleted object (${status}): ${1}"
+    return
+  fi
+  local obsol=$(${XML} sel -t -m "${xp}" -v "." ${sysm})
+  local arch=$(${XML} sel -t -m "//archived" -v "." ${sysm})
+  rm ${sysm}
+  if [[ -z ${obsol} ]]; then
+    return
+  fi
+  lecho "${msg}" "${indent} ${obsol} (HTTP: ${status}, archived: ${arch})"
+  followObsoletes ${obsol} $(expr 1 + ${2}) ${3}
+}
+
+
+function processSystemMetadata() {
+  # $1 = path to system metadata
+  # $2 = PID encoded
+  local pid=$(${XML} sel -t -m "//identifier" -v "." ${1})
+  local origin_mn=$(${XML} sel -t -m "//originMemberNode" -v "." ${1})
+  local auth_mn=$(${XML} sel -t -m "//authoritativeMemberNode" -v "." ${1})
+  local submitter=$(${XML} sel -t -m "//submitter" -v "." ${1})
+  local rholder=$(${XML} sel -t -m "//rightsHolder" -v "." ${1})
+  local obsol=$(${XML} sel -t -m "//obsoletes" -v "." ${1})
+  local obsol_by=$(${XML} sel -t -m "//obsoletedBy" -v "." ${1})
+  local arch=$(${XML} sel -t -m "//archived" -v "." ${1})
+  local fmtid=$(${XML} sel -t -m "//formatId" -v "." ${1})
+  local uploaded=$(${XML} sel -t -m "//dateUploaded" -v "." ${1})
+  local modified=$(${XML} sel -t -m "//dateSysMetadataModified" -v "." ${1})
+  lecho "Date uploaded" ${uploaded}
+  lecho "Date modified" ${modified}
+  lecho "Origin Member Node" ${origin_mn} 
+  lecho "Auth Member Node" ${auth_mn}  
+  lecho "Submitter" ${submitter}  
+  lecho "Rights Holder" ${rholder}
+  lecho "Archived" ${arch}
+  lecho "Format ID" ${fmtid}
+
+  showLocations ${sysm_dest} ${2}
+
+  if [[ ! -z ${show_obsol_chain} ]]; then
+    if [[ ! -z ${obsol} ]]; then
+      followObsoletes ${pid} "1" "obsoletes"
+    fi
+    if [[ ! -z ${obsol_by} ]]; then
+      followObsoletes ${pid} "1" "obsoletedBy"
+    fi
+  fi
+}
+
+
+function getPidInfo() {
+  # $1 = PID
+  lecho "Evaluating" ${1}
+  local PID_encoded="$(echo ${PID} | ${URLENCODE})"
+  lecho "URL encoded" ${PID_encoded}
+
+  #get system metadata and status code
+  local url="${base_url}/v1/meta/${PID_encoded}"
+  log "System metadata = ${sysm_dest}"
+  local CMD="curl -k -s -w \"%{http_code}\" -o \"${sysm_dest}\" \"${url}\""
+  log ${CMD}
+  status=$(eval ${CMD})
+  lecho "CN HTTP Response" ${status}
+  if [[ ${status} -ne "200" ]]; then
+    lerror "Further evaluation not possible, terminating."
+    return
+  fi
+  processSystemMetadata ${sysm_dest} ${PID_encoded}
+}
+
+
+
+# === Main ===
+while getopts "hHvVob:" OPTION
+do
+  case ${OPTION} in
+    h) usage; exit 1;;
+    H) usageExamples; exit 1;;
+    v) showVersion; exit 1;;
+    V) VERBOSE=1;;
+    o) show_obsol_chain=1;;
+    b) base_url=${OPTARG};;
+    \?) usage; exit 1;;
+  esac
+done
+
+shift $((OPTIND-1))
+PID=${1}
+if [[ -z ${PID} ]]; then
+  echo "PID is required."
+  exit 1
+fi
+loadNodes
+getPidInfo ${PID}
+log "Cleaning up"
+rm ${sysm_dest}
+rm ${node_list}
