@@ -1,7 +1,7 @@
 #!/bin/bash
 # Escape a solr query term
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 APPNAME=$(basename ${0})
 APPDIR=$(pwd)
 URLENCODE="$(dirname ${0})/urlencode"
@@ -110,7 +110,7 @@ function escapeSolrTerm() {
   _t="${_t//]/\\]}"
   _t="${_t//(/\\(}"
   _t="${_t//)/\\)}"
-  _t="${_t//\//\\\/}"
+  #_t="${_t//\//\\\/}"
   echo "${_t}"
 }
 

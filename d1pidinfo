@@ -3,7 +3,7 @@
 # Report on a PID
 #
 
-VERSION="1.1.0"
+VERSION="1.1.1"
 APPNAME=$(basename ${0})
 APPDIR=$(pwd)
 TMPDIR="/tmp"
@@ -157,7 +157,7 @@ function escapeSolrTerm() {
   _t="${_t//]/\\]}"
   _t="${_t//(/\\(}"
   _t="${_t//)/\\)}"
-  _t="${_t//\//\\\/}"
+  #_t="${_t//\//\\\/}"
   echo "${_t}"
 }
 
@@ -179,20 +179,38 @@ function processSearchIndex() {
   if [[ ${otype} == "METADATA" ]]; then
     # What does this metadata document?
     local documents=$(${XML} sel -t -m "//arr[@name='documents']" -v "str" ${search_out})
+    if [[ -z ${documents} ]]; then
+      lwarn "PID refers to METADATA but no 'documents' entries found in index."
+    fi
     for document in ${documents}; do
       lecho "Documents" "${document}"
     done
   fi
   if [ "${otype}" == "METADATA" ] || [ "${otype}" == "DATA" ] ; then
     local rmaps=$(${XML} sel -t -m "//arr[@name='resourceMap']" -v "str" ${search_out})
+    if [[ -z ${rmaps} ]]; then
+      lwarn "PID refers to ${otype} but no 'resourceMap' entries found in index."
+    fi
     for rmap in ${rmaps}; do
       lecho "In Package" "${rmap}"
     done
   fi
   if [ ${otype} == "RESOURCE" ]; then
-    local components=$(${XML} sel -t -m "//arr[@name='documents']" -v "str" ${search_out})
-    for document in ${documents}; do
-      lecho "Documents" "${document}"
+    # Lookup all the objects contained in this resource map
+    log "Evaluating resource map references"
+    term=$(escapeSolrTerm ${1})
+    q="$(echo "resourceMap:${term}" | ${URLENCODE})"
+    local url="${base_url}/v1/query/solr/?fl=identifier&q=${q}"
+    local CMD="curl -k -s -w \"%{http_code}\" -o \"${search_out}\" \"${url}\""
+    log "CMD = ${CMD}"
+    status=$(eval ${CMD})
+    lecho "Search Resource Map" "${status}"
+    local documents=$(${XML} sel -t -m "//str[@name='identifier']" -v  "." -n ${search_out})
+    if [[ -z ${documents} ]]; then
+      lwarn "Object is a Resource Map but index has not references to data or metadata."
+    fi
+    for doc in ${documents}; do
+      lecho "Has contents" "${doc}"
     done
   fi
 }
