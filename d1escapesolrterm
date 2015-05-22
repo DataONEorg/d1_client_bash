@@ -1,0 +1,147 @@
+#!/bin/bash
+# Escape a solr query term
+
+VERSION="1.0.0"
+APPNAME=$(basename ${0})
+APPDIR=$(pwd)
+URLENCODE="$(dirname ${0})/urlencode"
+VERBOSE=""
+do_url_encode=""
+
+# console colors, use echo -e ...
+XC='\033[0;30m' #black
+RC='\033[0;31m' #red
+GC='\033[0;32m' #green
+YC='\033[0;33m' #yellow
+BC='\033[0;34m' #blue
+MC='\033[0;35m' #magenta
+CC='\033[0;36m' #cyan
+WC='\033[0;37m' #white
+
+# Bold
+BXC='\033[1;30m' #black
+BRC='\033[1;31m' #red
+BGC='\033[1;32m' #green
+BYC='\033[1;33m' #yellow
+BBC='\033[1;34m' #blue
+BMC='\033[1;35m' #magenta
+BCC='\033[1;36m' #cyan
+BWC='\033[1;37m' #white
+
+NC='\033[0m'     #reset
+
+function showVersion() {
+  echo ${VERSION}
+}
+
+
+function lecho() {
+  if [[ ! -z ${3} ]]; then
+    printf ${3}
+  fi
+  if [[ ! -z ${4} ]]; then
+    printf "%20s : %${4}s\n" "${1}" "${2}"
+  else
+    printf "%20s : %s\n" "${1}" "${2}"
+  fi
+  if [[ ! -z ${3} ]]; then
+    printf ${NC}
+  fi
+}
+
+
+function log() {
+  if [[ ! -z ${VERBOSE} ]]; then
+    echo -e ${GC}"LOG: $@"${NC} 1>&2;
+  fi
+}
+
+
+function lwarn() {
+  echo -e ${RC}"WARN: $@"${NC} 1>&2;
+}
+
+
+function lerror() {
+  echo -e ${BRC}"ERROR: $@"${NC} 1>&2;
+}
+
+
+function usage() {
+cat << EOF
+${APPNAME} version ${VERSION}
+
+usage: ${APPNAME} OPTIONS TERM
+
+Escape a term for use in a solr query.
+
+OPTIONS:
+  -h  Show this message
+  -H  Show this message with examples
+  -u  Show URL escaped form
+  -v  Show version and exit
+  -V  Verbose output to STDERR
+
+TERM:
+  The solr query term to escape.
+
+EOF
+}
+
+
+function usageExamples() {
+  usage
+cat << EOF
+Example - Escape a DataONE identifier:
+
+  ./${APPNAME} -o "https://pasta.lternet.edu/package/metadata/eml/knb-lter-gce/249/33"
+
+EOF
+}
+
+
+function escapeSolrTerm() {
+  # Escapes $1 as a term for a solr query
+  local _t="${1//\\/\\\\}"
+  _t="${_t//:/\\:}"
+  _t="${_t//+/\\+}"
+  _t="${_t//-/\\-}"
+  _t="${_t//[/\\[}"
+  _t="${_t//]/\\]}"
+  _t="${_t//(/\\(}"
+  _t="${_t//)/\\)}"
+  _t="${_t//\//\\\/}"
+  echo "${_t}"
+}
+
+
+#=== Main ===
+
+while getopts "hHvVu" OPTION
+do
+  case ${OPTION} in
+    h) usage; exit 1;;
+    H) usageExamples; exit 1;;
+    v) showVersion; exit 1;;
+    V) VERBOSE=1;;
+    u) do_url_encode=1;;
+    \?) usage; exit 1;;
+  esac
+done
+
+shift $((OPTIND-1))
+TERM=${1}
+if [[ -z ${TERM} ]]; then
+  echo "TERM to escape is required."
+  exit 1
+fi
+log "TERM = ${TERM}"
+term_escaped="$(escapeSolrTerm ${TERM})"
+log "solr escaped = ${term_escaped}"
+term_url_escaped=$(echo ${term_escaped} | ${URLENCODE})
+log "url+solr escaped = ${term_url_escaped}"
+if [[ ! -z ${do_url_encode} ]]; then
+  echo ${term_url_escaped}
+else
+  echo ${term_escaped}
+fi
