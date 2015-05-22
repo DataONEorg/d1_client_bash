@@ -3,7 +3,7 @@
 # Report on a PID
 #
 
-VERSION="1.1.1"
+VERSION="1.1.2"
 APPNAME=$(basename ${0})
 APPDIR=$(pwd)
 TMPDIR="/tmp"
@@ -63,7 +63,7 @@ function locateXML() {
         XML=${CANDIDATE}
       else
         # Can't find xmlstarlet, so exit
-        echo "Can not locate the 'xml' or 'xmlstarlet' program.  Please install and retry."
+        lerror "Can not locate the 'xml' or 'xmlstarlet' program.  Please install and retry."
         exit
       fi
     fi
@@ -130,9 +130,10 @@ function usageExamples() {
   usage
 cat << EOF
 Example - Lookup information about "knb-lter-cap.247.4" using the default 
-Coordinating Node (${base_url}):
+Coordinating Node (${base_url}). Show obsolescence chain and info from CN 
+search index:
 
-  ./${APPNAME} -o "knb-lter-cap.247.4"
+  ./${APPNAME} -o -s "kgordon.31.58"
 
 EOF
 }
@@ -287,8 +288,6 @@ function processSystemMetadata() {
   lecho "Archived" "${arch}"
   lecho "Format ID" "${fmtid}"
 
-  showLocations ${sysm_dest} ${2}
-
   if [[ ! -z ${show_obsol_chain} ]]; then
     if [[ ! -z ${obsol} ]]; then
       followObsoletes ${pid} "0" "obsoletes"
@@ -297,6 +296,8 @@ function processSystemMetadata() {
       followObsoletes ${pid} "0" "obsoletedBy"
     fi
   fi
+
+  showLocations ${sysm_dest} ${2}
 }
 
 
@@ -318,6 +319,7 @@ function getPidInfo() {
     return
   fi
   processSystemMetadata ${sysm_dest} ${PID_encoded}
+
   if [[ ! -z ${show_search_index} ]]; then
     processSearchIndex ${1}
   fi
