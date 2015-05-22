@@ -3,7 +3,7 @@
 # Report on a PID
 #
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 APPNAME=$(basename ${0})
 APPDIR=$(pwd)
 TMPDIR="/tmp"
@@ -11,9 +11,11 @@ URLENCODE="$(dirname ${0})/urlencode"
 XML="/usr/local/bin/xml"
 sysm_dest="${TMPDIR}/sysmeta.$$.xml"
 node_list="${TMPDIR}/nodes.$$.xml"
+search_out="${TMPDIR}/search.$$.xml"
 VERBOSE=""
 base_url="https://cn.dataone.org/cn"
 show_obsol_chain=""
+show_search_index=""
 
 # console colors, use echo -e ...
 XC='\033[0;30m' #black
@@ -113,6 +115,7 @@ OPTIONS:
   -H  Show this message with examples
   -b  Base URL of Coordinating Node to use
   -o  Show obsolescence chain for object
+  -s  Show presence of object in CN search index
   -v  Show version and exit
   -V  Verbose output to STDERR
 
@@ -144,8 +147,54 @@ function loadNodes() {
 }
 
 
-function inSearchIndex() {
-  lerror "Not Implemented"
+function escapeSolrTerm() {
+  # Escapes $1 as a term for a solr query
+  local _t="${1//\\/\\\\}"
+  _t="${_t//:/\\:}"
+  _t="${_t//+/\\+}"
+  _t="${_t//-/\\-}"
+  _t="${_t//[/\\[}"
+  _t="${_t//]/\\]}"
+  _t="${_t//(/\\(}"
+  _t="${_t//)/\\)}"
+  _t="${_t//\//\\\/}"
+  echo "${_t}"
+}
+
+
+function processSearchIndex() {
+  # look for PID $1 entry in search index
+  local term=$(escapeSolrTerm ${1})
+  log "Escaped identifier = ${term}"
+  local q="$(echo "identifier:${term}" | ${URLENCODE})"
+  local url="${base_url}/v1/query/solr/?q=${q}"
+  local CMD="curl -k -s -w \"%{http_code}\" -o \"${search_out}\" \"${url}\""
+  log "CMD = ${CMD}"
+  status=$(eval ${CMD})
+  lecho "Search status" "${status}"
+  local otype=$(${XML} sel -t -m "//str[@name='formatType']" -v "." ${search_out})
+  lecho "Search Type" ${otype}
+  lecho "Search Modified" "$(${XML} sel -t -m "//date[@name='dateModified']" -v "." ${search_out})"
+  lecho "Search Uploaded" "$(${XML} sel -t -m "//date[@name='dateUploaded']" -v "." ${search_out})"
+  if [[ ${otype} == "METADATA" ]]; then
+    # What does this metadata document?
+    local documents=$(${XML} sel -t -m "//arr[@name='documents']" -v "str" ${search_out})
+    for document in ${documents}; do
+      lecho "Documents" "${document}"
+    done
+  fi
+  if [ "${otype}" == "METADATA" ] || [ "${otype}" == "DATA" ] ; then
+    local rmaps=$(${XML} sel -t -m "//arr[@name='resourceMap']" -v "str" ${search_out})
+    for rmap in ${rmaps}; do
+      lecho "In Package" "${rmap}"
+    done
+  fi
+  if [ ${otype} == "RESOURCE" ]; then
+    local components=$(${XML} sel -t -m "//arr[@name='documents']" -v "str" ${search_out})
+    for document in ${documents}; do
+      lecho "Documents" "${document}"
+    done
+  fi
 }
 
 
@@ -173,7 +222,7 @@ function followObsoletes() {
   if [[ ${3} == "obsoletedBy" ]]; then
     xp="//obsoletedBy"
     msg="Obsoleted By"
-    local indent="+$(printf '%*s' "${2}" | tr ' ' "-")"
+    indent="$(printf '%*s' ${2})+-"
   fi
   local epid="$(echo ${1} | ${URLENCODE})"
   local url="${base_url}/v1/meta/${epid}"
@@ -193,7 +242,7 @@ function followObsoletes() {
     return
   fi
   lecho "${msg}" "${indent} ${obsol} (HTTP: ${status}, archived: ${arch})"
-  followObsoletes ${obsol} $(expr 1 + ${2}) ${3}
+  followObsoletes ${obsol} $(expr 2 + ${2}) ${3}
 }
 
 
@@ -211,23 +260,23 @@ function processSystemMetadata() {
   local fmtid=$(${XML} sel -t -m "//formatId" -v "." ${1})
   local uploaded=$(${XML} sel -t -m "//dateUploaded" -v "." ${1})
   local modified=$(${XML} sel -t -m "//dateSysMetadataModified" -v "." ${1})
-  lecho "Date uploaded" ${uploaded}
-  lecho "Date modified" ${modified}
-  lecho "Origin Member Node" ${origin_mn} 
-  lecho "Auth Member Node" ${auth_mn}  
-  lecho "Submitter" ${submitter}  
-  lecho "Rights Holder" ${rholder}
-  lecho "Archived" ${arch}
-  lecho "Format ID" ${fmtid}
+  lecho "Date uploaded" "${uploaded}"
+  lecho "Date modified" "${modified}"
+  lecho "Origin Member Node" "${origin_mn}"
+  lecho "Auth Member Node" "${auth_mn}"
+  lecho "Submitter" "${submitter}"
+  lecho "Rights Holder" "${rholder}"
+  lecho "Archived" "${arch}"
+  lecho "Format ID" "${fmtid}"
 
   showLocations ${sysm_dest} ${2}
 
   if [[ ! -z ${show_obsol_chain} ]]; then
     if [[ ! -z ${obsol} ]]; then
-      followObsoletes ${pid} "1" "obsoletes"
+      followObsoletes ${pid} "0" "obsoletes"
     fi
     if [[ ! -z ${obsol_by} ]]; then
-      followObsoletes ${pid} "1" "obsoletedBy"
+      followObsoletes ${pid} "0" "obsoletedBy"
     fi
   fi
 }
@@ -251,11 +300,14 @@ function getPidInfo() {
     return
   fi
   processSystemMetadata ${sysm_dest} ${PID_encoded}
+  if [[ ! -z ${show_search_index} ]]; then
+    processSearchIndex ${1}
+  fi
 }
 
 
 # === Main ===
-while getopts "hHvVob:" OPTION
+while getopts "hHvVosb:" OPTION
 do
   case ${OPTION} in
     h) usage; exit 1;;
@@ -263,6 +315,7 @@ do
     v) showVersion; exit 1;;
     V) VERBOSE=1;;
     o) show_obsol_chain=1;;
+    s) show_search_index=1;;
     b) base_url=${OPTARG};;
     \?) usage; exit 1;;
   esac
@@ -280,3 +333,4 @@ getPidInfo ${PID}
 log "Cleaning up"
 rm ${sysm_dest}
 rm ${node_list}
+rm -f ${search_out}
