@@ -43,6 +43,31 @@ function showVersion() {
 }
 
 
+function locateXML() {
+  CANDIDATE=`which xml`
+  if [[ -x ${CANDIDATE} ]]; then
+      # We're good to go, use CANDIDATE
+      XML=${CANDIDATE}
+  else
+    # MAYBE its called XMLSTARLET 
+    CANDIDATE=`which xmlstarlet`
+    if [[ -x ${CANDIDATE} ]]; then
+      # We're good to go, use CANDIDATE
+      XML=${CANDIDATE}
+    else
+      # Nothing found on path, try the standard location
+      CANDIDATE="/usr/local/bin/xml"
+      if [[ -x ${CANDIDATE} ]]; then
+        XML=${CANDIDATE}
+      else
+        # Can't find xmlstarlet, so exit
+        echo "Can not locate the 'xml' or 'xmlstarlet' program.  Please install and retry."
+        exit
+      fi
+    fi
+  fi
+}
+
 function lecho() {
   if [[ ! -z ${3} ]]; then
     printf ${3}
@@ -127,11 +152,11 @@ function inSearchIndex() {
 function showLocations() {
   # $1 = system metadata
   # $2 = encoded pid
-  local replicas=$(xml sel -t -m "//replica" -v "replicaMemberNode" -n ${1})
+  local replicas=$($XML sel -t -m "//replica" -v "replicaMemberNode" -n ${1})
   local lstatus=""
   local sysm="${sysm_dest}.3"
   for replica in ${replicas}; do
-    local burl=$(xml sel -t -m "//node[identifier = '${replica}']" -v "baseURL" ${node_list})
+    local burl=$($XML sel -t -m "//node[identifier = '${replica}']" -v "baseURL" ${node_list})
     burl="${burl}/v1/meta/${2}"
     log "Replica system metadata URL = ${burl}"
     local CMD="curl -k -s -w \"%{http_code}\" -o \"${sysm}\" \"${burl}\""
@@ -229,7 +254,6 @@ function getPidInfo() {
 }
 
 
-
 # === Main ===
 while getopts "hHvVob:" OPTION
 do
@@ -250,6 +274,7 @@ if [[ -z ${PID} ]]; then
   echo "PID is required."
   exit 1
 fi
+locateXML
 loadNodes
 getPidInfo ${PID}
 log "Cleaning up"
