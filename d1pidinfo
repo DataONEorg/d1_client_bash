@@ -133,7 +133,41 @@ Example - Lookup information about "knb-lter-cap.247.4" using the default
 Coordinating Node (${base_url}). Show obsolescence chain and info from CN 
 search index:
 
-  ./${APPNAME} -o -s "kgordon.31.58"
+  ./${APPNAME} -o -s "kgordon.31.26"
+
+Where:
+
+  Evaluating        : The identifier being evaluated
+  URL encoded       : URL encoded form of the identifier
+  CN HTTP Response  : HTTP status code when requesting system metadata from CN
+  Date uploaded     : Date object was uploaded to MN, as reported by sys meta
+  Date modified     : Date sys meta was last modified
+  Origin Member Node: The node id of the origin MN
+  Auth Member Node  : The node id of the authoritative MN
+  Submitter         : Identity of the submitter
+  Rights Holder     : Identity of the rights holder of the object
+  Archived          : Has the object been archived?
+  Format ID         : What is the format ID of the object
+  Obsoletes         : Indicates the PID that this object obsoletes if present. 
+                      The obsolesence chain is followed until no more PIDs are 
+                      obsoleted. The last entry will be the oldest (original) 
+                      PID in the obsolesence chain.
+  Obsoleted By      : Indicates the PID that obsoletes this object, if present.
+                      The obsolescence chain is followed until no more PIDs are
+                      obsoleteing. The last entry will be the newest (current 
+                      head) of the obsolesence chain.
+  Replica           : The node ID of a known replica holder. Sys meta 
+                      availability is tested and reported as the HTTP 
+                      status code.
+  Search status     : The status code 
+  Search Type       : The category of object as reposrted by search index
+  Search Modified   : Date sys meta modified as reported by search index
+  Search Uploaded   : Date uploaded as reported by search index
+  Documents         : Indicates which PIDs this metadata documents (if type is 
+                      Science Metadata "METADATA").
+  Documented By     : Indicates which metadata documents this object (if type 
+                      is "DATA")
+  In Package        : Indicates the PID of the package that contains the object.
 
 EOF
 }
@@ -171,9 +205,13 @@ function processSearchIndex() {
   local url="${base_url}/v1/query/solr/?q=${q}"
   local CMD="curl -k -s -w \"%{http_code}\" -o \"${search_out}\" \"${url}\""
   log "CMD = ${CMD}"
-  status=$(eval ${CMD})
+  local status=$(eval ${CMD})
   lecho "Search status" "${status}"
+  local num_found=$(${XML} sel -t -m "//result" -v "@numFound" ${search_out})
   local otype=$(${XML} sel -t -m "//str[@name='formatType']" -v "." ${search_out})
+  if [[ "${num_found}" == "0" ]]; then
+    lerror "No entries found in search index."
+  fi
   lecho "Search Type" ${otype}
   lecho "Search Modified" "$(${XML} sel -t -m "//date[@name='dateModified']" -v "." ${search_out})"
   lecho "Search Uploaded" "$(${XML} sel -t -m "//date[@name='dateUploaded']" -v "." ${search_out})"
@@ -196,7 +234,7 @@ function processSearchIndex() {
       lecho "In Package" "${rmap}"
     done
   fi
-  if [ ${otype} == "RESOURCE" ]; then
+  if [ "${otype}" == "RESOURCE" ]; then
     # Lookup all the objects contained in this resource map
     log "Evaluating resource map references"
     term=$(escapeSolrTerm ${1})
