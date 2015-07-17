@@ -1,0 +1,223 @@
+#!/bin/bash
+
+# Report on and optionally adjust the DNS situation for a 
+# DataONE environment.
+
+VERSION="1.0.0"
+APPNAME=$(basename "${0}")
+APPDIR=$(dirname "${0}")
+TMPDIR="/tmp"
+UPDATE_DNS=0
+REPORT_ALL=0
+
+# Available environments, brief name.
+environments=(prod dev dev-2 sandbox sandbox-2 stage stage-2)
+environment=${environments[0]}
+env_info=""
+env_info_hosts=""
+
+# Available locations
+host_locations=(ucsb unm orc)
+
+new_primary_location=""
+new_primary_DNS=""
+
+
+source "${APPDIR}/script_common.sh"
+
+
+function usage() {
+cat << EOF
+${APPNAME} version ${VERSION}
+
+usage: ${APPNAME} OPTIONS [ENVIRONMENT]
+
+Report on the current DNS situation for the specified environment.
+
+OPTIONS:
+  -h  Show this message
+  -H  Show this message with examples
+  -v  Show version and exit
+  -V  Verbose output to STDERR
+  -s  DNS server to query (system default)
+  -A  Report on all environments
+
+ENVIRONMENT: 
+  The DataONE environment to report on (${environment}).
+
+Available environments:
+  ${environments[@]}
+
+Available locations:
+  ${host_locations[@]}
+
+EOF
+}
+
+
+function usageExamples() {
+  usage
+  cat << EOF
+Example: Show current DNS situation for stage environment.
+
+${APPNAME} stage
+Current state of DNS for stage environment:
+  128.111.54.76    cn-stage.test.dataone.org
+  128.111.54.76    cn-stage-ucsb-1.test.dataone.org <=== Primary Host
+  64.106.40.8      cn-stage-unm-1.test.dataone.org
+  160.36.13.151    cn-stage-orc-1.test.dataone.org
+
+EOF
+}
+
+
+#returns a DNS name given
+# $1 = host location
+# $2 = environment
+function makeDNSName() {
+  local dns_name="cn"
+  if [[ ${2} != "prod" ]]; then
+    #split environment on "-"
+    part_a="$( cut -d '-' -f 1 <<< "${2}" )"
+    part_b="$( cut -d '-' -f 2- <<< "${2}" )"
+    dns_name="cn-${part_a}"
+    if [[ "${part_a}" == "${part_b}" ]]; then
+      dns_name="${dns_name}-${1}-1"
+    else
+      dns_name="${dns_name}-${1}-${part_b}"
+    fi
+    dns_name="${dns_name}.test.dataone.org"
+    echo ${dns_name}
+    return
+  fi
+  echo "cn-${1}-1.dataone.org"
+  return
+}
+
+
+# Given environment name as $1, return the FQDN for the RR DNS entry
+function getRRDNSEntry() {
+  if [[ "${1}" == "prod" ]]; then
+    echo "cn.dataone.org"
+    return
+  fi
+  part_a="$( cut -d '-' -f 1 <<< "${1}" )"
+  part_b="$( cut -d '-' -f 2- <<< "${1}" )"
+  dns_name="cn-${part_a}"
+  if [[ "${part_a}" == "${part_b}" ]]; then
+    dns_name="${dns_name}"
+  else
+    dns_name="${dns_name}-${part_b}"
+  fi
+  echo "${dns_name}.test.dataone.org"
+
+}
+
+
+# Get the IP address for a DNS entry
+# Use ${2} as DNS server if specified.
+function getIPAddress() {
+  if [[ -z "${2}" ]]; then
+    dig +short ${1}
+  else
+    dig @${2} +short ${1}
+  fi
+}
+
+
+# Populate environment information DNS details
+function getEnvironmentState() {
+  env_info[0]="$(getRRDNSEntry ${environment})"
+  env_info[1]="$(getIPAddress ${env_info[0]})"
+  log "rr host is ${env_info[1]}:${env_info[0]}"
+  env_info[2]=""
+  env_info_hosts=""
+  local counter=0
+  for location in ${host_locations[@]}; do
+    dns_name="$(makeDNSName ${location} ${environment})"
+    ip=$(getIPAddress ${dns_name})
+    env_info_hosts[${counter}]="${dns_name}:${ip}"
+    log "host ${counter} is ${env_info_hosts[${counter}]}"
+    if [[ "${ip}" == "${env_info[1]}" ]]; then
+      env_info[2]=${counter}
+    fi
+    let counter=counter+1
+  done
+}
+
+
+function showEnvironmentState() {
+  printf "Current state of DNS for ${environment} environment:\n"
+  printf "  %-16s %s\n" "${env_info[1]}" "${env_info[0]}"
+  local counter=0
+  for entry in ${env_info_hosts[@]} ; do
+    printf "  %-16s %s" "${entry#*:}" "${entry%%:*}"
+    if [ ${counter} -eq ${env_info[2]} ]; then
+      printf " <=== Primary Host\n"
+    else
+      printf "\n"
+    fi
+    let counter=counter+1
+  done
+}
+
+
+function showProposedEnvironmentState() {
+  printf "\nCurrent state of DNS for ${environment} environment and proposed change:\n"
+  printf "  %-16s %s\n" "${env_info[1]}" "${env_info[0]}"
+  local counter=0
+  for entry in ${env_info_hosts[@]} ; do
+    printf "  %-16s %s" "${entry#*:}" "${entry%%:*}"
+    if [ ${counter} -eq ${env_info[2]} ]; then
+      printf " <=== Current Primary Host\n"
+    elif [[ "${new_primary_DNS}" == "${entry%%:*}" ]]; then
+      printf " <=== Proposed New Primary Host\n"
+    else
+      printf "\n"
+    fi
+    let counter=counter+1
+  done
+  printf "\n"
+}
+
+
+# == MAIN ==
+
+while getopts "hHvVAs:" OPTION
+do
+  case ${OPTION} in
+    h) usage; exit 1;;
+    H) usageExamples; exit 1;;
+    v) showVersion; exit 1;;
+    V) VERBOSE=1;;
+    s) DNS_SERVER=${OPTARG};; 
+    A) REPORT_ALL=1;;
+    \?) usage; exit 1;;
+  esac
+done
+
+if [[ ! -z ${DNS_SERVER} ]]; then
+  log "Setting DNS server to ${DNS_SERVER}"
+fi
+
+# Get the environment to operate on
+shift $((OPTIND-1))
+if [[ ! -z "${1}" ]]; then
+  environment=${1}
+fi
+containsElement ${environment} "${environments[@]}"
+if [ $? -eq 1 ]; then
+  lerror "Invalid environment '${environment}'. Expecting one of: ${environments[@]}"
+  exit 1
+fi
+
+if [ ${REPORT_ALL} -eq 1 ]; then
+  for environment in ${environments[@]} ; do
+    getEnvironmentState
+    showEnvironmentState
+    printf "====\n"
+  done
+else
+  getEnvironmentState
+  showEnvironmentState
+fi
