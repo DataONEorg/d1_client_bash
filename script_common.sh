@@ -26,10 +26,20 @@ DATAONE_CONFIG_FOLDER="${HOME}/.dataone"
 DATAONE_CONFIG="${DATAONE_CONFIG_FOLDER}/d1bash.cfg"
 
 #Default client certificate
-MY_CLIENT_CERT="${DATAONE_CONFIG_FOLDER}/private/client_cert.pem"
+MY_CLIENT_CERT=""
+if [[ -f "${DATAONE_CONFIG_FOLDER}/private/client_cert.pem" ]]; then
+  MY_CLIENT_CERT="${DATAONE_CONFIG_FOLDER}/private/client_cert.pem"
+fi
 
-#Default NODE to use
-NODE="https://cn.dataone.org/cn"
+#Default Coordinating NODE base URL to use
+if [[ -z ${NODE} ]]; then
+  NODE="https://cn.dataone.org/cn"
+fi
+
+#Default Member NODE base URL
+if [[ -z ${MNODE} ]]; then
+  MNODE=""
+fi
 
 # console colors, use echo -e ...
 _XCOLOR='\033[0;30m' #black

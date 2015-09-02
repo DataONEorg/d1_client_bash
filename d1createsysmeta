@@ -7,22 +7,21 @@ VERSION="1.2.0"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
-TMPNAM="${TMPDIR}/sysmeta.$$.xml"
-MY_CLIENT_CERT="" #This is updated by script_common
 NAMESPACE="http://ns.dataone.org/service/types/v1"
 
 # possibly override initialized variables
 source "${APPDIR}/script_common.sh"
+locateXML
 
 # temp file destination
 tmpfile="${TMPDIR}/sysmeta.$$.xml"
-
 
 PID=""
 format_id=""
 submitter=""
 rights_holder="${submitter}"
 n_replicas="3"
+#This value is set by script_common
 client_certificate="${MY_CLIENT_CERT}"
 fobject=""
 origin_member_node=""
@@ -206,6 +205,9 @@ if [[ -f "${client_certificate}" ]]; then
   ldebug "Examining ${client_certificate} for submitter subject..."
   ll=$(echo "10*(5-${LOGLEVEL})" | bc)
   submitter=$(d1mysubject.py -l ${ll} "${client_certificate}")
+  if [[ $? -ne 0 ]]; then
+    lwarn "Certificate has expired."
+  fi
   linfo "Submitter subject set to: ${submitter}"
 fi
 

@@ -1,179 +1,141 @@
 #!/bin/bash
-# Creates content on a DataONE member node. Also handy for generating
-# system metadata for testing purposes - see the -D and -k switches 
 #
-# You will need python source for d1_common_python and d1_instance_generator to 
-# run this script. These can be retrieved from svn at:
-#   https://repository.dataone.org/software/cicore/trunk
-#
-# D.V.
+# Creates content on a DataONE member node. 
 #
 
-VERSION="Version 0.0.5"
+VERSION="Version 1.1.0"
+APPNAME=$(basename "${0}")
+APPDIR=$(dirname "${0}")
+TMPDIR="/tmp"
 
-#Base path to folder containing the python stuff
-WD="$HOME/Workspaces/DataONE_trunk/"
-export PYTHONPATH=".:$WD/d1_common_python/src:$WD/d1_instance_generator/src"
+# possibly override initialized variables
+source "${APPDIR}/script_common.sh"
+locateXML
 
-#Script that given a cert, prints subject to stdout
-MYSUBJECT="$WD/d1_instance_generator/src/my_subject.py"
-
-#Script to generate system metadata
-GENSYS="$WD/d1_instance_generator/src/generate_sysmeta.py"
-
-#Location of XMLStarlet command
-XML="/usr/local/bin/xml"
-TMP="/tmp"
-
-#Destination of generated system metadata doc
-sysmDest="${TMP}/sysmeta.$$.xml"
-baseurl=${NODE}
-raw=""
-verbose=""
+baseurl=${MNODE}
+raw=0
+dryrun=0
 CMD=""
-certificate=""
 PID=""
-oType="application/octet-stream"
-nReplicas=3
-keepSysm=""
-dryrun=""
+#This value is set by script_common
+client_certificate="${MY_CLIENT_CERT}"
+submitter=""
+
+# temp file destination
+tmpfile="${TMPDIR}/${APPNAME}.$$.xml"
 
 
 usage()
 {
 cat << EOF
 
-usage: $(basename $0) OPTIONS FILE
+usage: $(basename $0) OPTIONS SYSMETA FILE
 
-Send FILE to a node. Command will create system metadata, and call create() on 
-the node with base URL specified in the NODE environment variable or from the 
--b parameter.
+Send FILE to a node using an MN.create call. The identifier specified in 
+SYSMETA will be used for the object. 
 
 OPTIONS:
 
   -h  Show this message
   -E  Certificate to use for authentication
-  -i  Identifier of the new object
-  -T  Object format identifier for new object
   -b  Node to create the new object (${baseurl})
-  -a  Number of replicas to request (${nReplicas})
-  -Y  Destination of generated system metadata (${sysmDest})
-  -k  Keep system metadata (default = No)
   -r  Show raw response
-  -D  Dry run, don't send anything to the MN (default = No)
-  -v  Be a bit more verbose
+  -D  Dry run, do not send anything to the MN (default = No)
+  -v  Set log level (1=error ... 4=debug)
   -V  Show version (${VERSION})
 
 EOF
 }
 
-show_version()
-{
-  echo ${VERSION}
+
+# Given $1 as a file containing system metadata, set $PID to the identifier
+getIdentifierFromSystemMetadata() {
+  PID=$(${XML} sel -t -m "//identifier" -v "." "${1}")
+  linfo "Identifier detected as ${PID}" 
 }
 
 
-while getopts "hvVrkDb:E:i:a:T:Y:" OPTION
+# --- Main ---
+
+while getopts "hv:VrDb:E:" OPTION
 do
     case $OPTION in
-      h) usage; exit 3;;
-      v) verbose=1;;
-      V) show_version; exit 3;;
+      h) usage; exit 1;;
       r) raw=1;;
-      k) keepSysm=1;;
-      b) baseurl=$OPTARG;;
-      E) certificate=$OPTARG;;
-      i) PID=$OPTARG;;
-      a) nReplicas=$OPTARG;;
-      T) oType=$OPTARG;;
-      Y) sysmDest=$OPTARG;;
+      b) baseurl="${OPTARG}";;
+      E) client_certificate="${OPTARG}";;
       D) dryrun=1;;
-      \?) usage; exit 3;;
+      v) LOGLEVEL=${OPTARG};;
+      V) show_version; exit 1;;
+      \?) echo "ERROR:   Invalid option: -$OPTARG";usage; exit 1;;
     esac
 done
 
-if [[ -z ${baseurl} ]]; then
-  echo "NODE or -b required"
-  exit 2
-fi
-if [[ -z ${PID} ]]; then
-  echo "Identifier is required"
-  exit 2
-fi
-if [[ -z ${certificate} ]]; then
-  echo "Certificate is required"
-  exit 2
-fi
-if [[ -z ${oType} ]]; then
-  echo "Object format identifier is required"
-  exit 2
-fi
-shift $(($OPTIND - 1))
-OBJECT=$1
-if [[ -z $OBJECT ]]; then
-  echo "File for upload is required"
-  exit 2
+shift $((OPTIND-1))
+fsysmeta="${1}"
+if [[ ! -f "${fsysmeta}" ]]; then
+  lerror "System metadata file not found: ${fsysmeta}"
+  exit 1  
 fi
 
-my_subject=$(python ${MYSUBJECT} -l 40 ${certificate})
+fobject="${2}"
+if [[ ! -f "${fobject}" ]]; then
+  lerror "Upload file not found: ${fobject}"
+  exit 1  
+fi
+
+if [[ -z ${baseurl} ]]; then
+  lerror "MNODE or -b required"
+  exit 1
+fi
+
+getIdentifierFromSystemMetadata "${fsysmeta}"
+
+ll=$(echo "10*(5-${LOGLEVEL})" | bc)
+submitter=$(d1mysubject.py -l ${ll} "${client_certificate}")
 if [[ $? -ne 0 ]]; then
-  if [[ -n ${dryrun} ]]; then
-    echo "WARNING : certificate ${certificate} has expired."
+  if [ -n ${dryrun} ]; then
+    lwarn "Certificate has expired."
   else
-    echo "ERROR   : certificate ${certificate} has expired."
-    exit 2
+    lerror "Certificate has expired."
   fi
 fi
-if [[ -n ${verbose} ]]; then
-  echo "SUBJECT : $my_subject"
-fi
+linfo "Submitter subject is: ${submitter}"
 
-python ${GENSYS} -f "${OBJECT}" \
-                 -i "${PID}" \
-                 -t "${oType}" \
-                 -s "${my_subject}" \
-                 -n "${nReplicas}" > ${sysmDest}
-
-if [[ -n ${verbose} ]]; then
-  echo "Generated system metadata is located at: ${sysmDest}"
-fi
 
 url="${baseurl}/v1/object"
-tmpfile="${TMP}/$(basename $0).$$.xml"
 
-CMD="curl -k -s -E  \"${certificate}\" -X POST -w \"%{http_code}\" \
- -o \"${tmpfile}\" -F \"pid=${PID}\" -F \"object=@${OBJECT}\" \
- -F \"sysmeta=@${sysmDest}\" \"${url}\""
+CMD="curl -k -s -E \"${client_certificate}\" -X POST -w \"%{http_code}\" \
+ -o \"${tmpfile}\" -F \"pid=${PID}\" -F \"object=@${fobject}\" \
+ -F \"sysmeta=@${fsysmeta}\" \"${url}\""
 
-if [[ -n $VERBOSE ]]; then
-  echo "Create Command = ${CMD}"
-fi
+linfo "Command = ${CMD}"
 
-if [[ -z ${dryrun} ]]; then
-  status=$(eval ${CMD})
-else
+if [[ ${dryrun} -gt 0 ]]; then
   status=0
   echo "Dry run was specified in script invocation." > ${tmpfile}
+else
+  status=$(eval ${CMD})
 fi
 
-if [[ ${status} == "200" ]]; then
-  if [[ -n ${verbose} ]]; then
-    echo "STATUS  : OK"
-  fi
-  if [[ -n ${raw} ]]; then
+if [[ ${status} -eq 200 ]]; then
+  linfo "Status: OK"
+  if [[ ${raw} -gt 0 ]]; then
     cat ${tmpfile}
   else
     xml fo ${tmpfile}
   fi
+elif [[ ${status} -eq 401 ]]; then
+  lerror "Node responded with Not Authorized."
+  lerror "Ensure subject \"${submitter}\" is authorized to create content"
+  lerror "Server response follows:"
+  ${XML} fo ${tmpfile}
 else
-  echo "ERROR   : Status of response = ${status}"
-  if [[ -n ${verbose} ]]; then
+  lerror "Status code = ${status}"
+  if [ ${LOGLEVEL} -gt 1 ]; then
+    linfo "Server response follows: "
     cat ${tmpfile}
-    echo
   fi
 fi
 rm ${tmpfile}
-if [[ -z ${keepSysm} ]]; then
-  rm ${sysmDest}
-fi
 
