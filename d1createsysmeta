@@ -3,7 +3,7 @@
 # Create system metadata for a file.
 #
 
-VERSION="1.1.0"
+VERSION="1.1.1"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -75,7 +75,7 @@ getFileSize() {
 
 genBlankV1SystemMetadata() {
 
-  local tstamp=$(date -u +%Y-%M0%dT%H:%m:%S)
+  local tstamp=$(date -u +%Y-%m-%dT%H:%M:%S)
 
   cat > ${tmpfile} << EOF
 <?xml version='1.0' encoding='UTF-8'?>
@@ -103,8 +103,8 @@ genBlankV1SystemMetadata() {
       <permission>read</permission>
     </allow>
   </accessPolicy>
-  <dateUploaded>${tstamp}.0</dateUploaded>
-  <dateSysMetadataModified>${tstamp}.0</dateSysMetadataModified>
+  <dateUploaded>${tstamp}.000+00:00</dateUploaded>
+  <dateSysMetadataModified>${tstamp}.000+00:00</dateSysMetadataModified>
   <replicationPolicy replicationAllowed='false' />
   <authoritativeMemberNode />
   <originMemberNode />
