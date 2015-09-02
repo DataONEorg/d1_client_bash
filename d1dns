@@ -1,9 +1,26 @@
 #!/bin/bash
 
-# Report on and optionally adjust the DNS situation for a 
-# DataONE environment.
+# Report on and optionally adjust the DNS situation for a DataONE environment.
 
-VERSION="1.0.0"
+# This work was created by participants in the DataONE project, and is
+# jointly copyrighted by participating institutions in DataONE. For
+# more information on DataONE, see our web site at https://dataone.org.
+#
+#   Copyright 2015
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+VERSION="1.0.1"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -37,8 +54,8 @@ Report on the current DNS situation for the specified environment.
 OPTIONS:
   -h  Show this message
   -H  Show this message with examples
-  -v  Show version and exit
-  -V  Verbose output to STDERR
+  -V  Show version and exit
+  -v  Set log level (1=error ... 4=debug)
   -s  DNS server to query (system default)
   -A  Report on all environments
 
@@ -129,7 +146,7 @@ function getIPAddress() {
 function getEnvironmentState() {
   env_info[0]="$(getRRDNSEntry ${environment})"
   env_info[1]="$(getIPAddress ${env_info[0]})"
-  log "rr host is ${env_info[1]}:${env_info[0]}"
+  linfo "rr host is ${env_info[1]}:${env_info[0]}"
   env_info[2]=""
   env_info_hosts=""
   local counter=0
@@ -137,7 +154,7 @@ function getEnvironmentState() {
     dns_name="$(makeDNSName ${location} ${environment})"
     ip=$(getIPAddress ${dns_name})
     env_info_hosts[${counter}]="${dns_name}:${ip}"
-    log "host ${counter} is ${env_info_hosts[${counter}]}"
+    linfo "host ${counter} is ${env_info_hosts[${counter}]}"
     if [[ "${ip}" == "${env_info[1]}" ]]; then
       env_info[2]=${counter}
     fi
@@ -183,13 +200,13 @@ function showProposedEnvironmentState() {
 
 # == MAIN ==
 
-while getopts "hHvVAs:" OPTION
+while getopts "hHv:VAs:" OPTION
 do
   case ${OPTION} in
     h) usage; exit 1;;
     H) usageExamples; exit 1;;
-    v) showVersion; exit 1;;
-    V) VERBOSE=1;;
+    V) showVersion; exit 1;;
+    v) LOGLEVEL=${OPTARG};;
     s) DNS_SERVER=${OPTARG};; 
     A) REPORT_ALL=1;;
     \?) usage; exit 1;;
@@ -197,7 +214,7 @@ do
 done
 
 if [[ ! -z ${DNS_SERVER} ]]; then
-  log "Setting DNS server to ${DNS_SERVER}"
+  linfo "Setting DNS server to ${DNS_SERVER}"
 fi
 
 # Get the environment to operate on
