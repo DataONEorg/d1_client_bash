@@ -3,7 +3,7 @@
 # Create system metadata for a file.
 #
 
-VERSION="1.1.1"
+VERSION="1.2.0"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -25,7 +25,8 @@ rights_holder="${submitter}"
 n_replicas="3"
 client_certificate="${MY_CLIENT_CERT}"
 fobject=""
-
+origin_member_node=""
+authoritative_member_node=""
 
 usage()
 {
@@ -44,6 +45,8 @@ OPTIONS:
   -r  Rights holder subject, defaults to submitter if not specified
   -f  Object format identifier (${format_id})
   -n  Suggested number of replicas (${n_replicas})
+  -O  Set originMemberNode value 
+  -A  Set authoritativeMemberNode value
   -v  Set log level (1=error ... 4=debug)
   -V  Show version (${VERSION})
 
@@ -124,7 +127,7 @@ EOF
 #  [replication_policy] = optional replicationPolicy fragment
 #  [origin_member_node] = optional originMemberNode id (will be replaced by a 
 #                         MN during create)
-#  [authoritative_member_mnode] = optional authoritativeMemberNode (will be 
+#  [authoritative_member_node] = optional authoritativeMemberNode (will be 
 #                         replaced by a Member Node during create)
 #
 # Output is to stdout
@@ -158,12 +161,22 @@ generateSystemMetadata() {
               ${tmpfile} > ${tmpfile}.a
     mv ${tmpfile}.a ${tmpfile}
   fi
+  if [[ ! -z "${origin_member_node}" ]]; then
+    ${XML} ed -u "//originMemberNode" -v "${origin_member_node}" \
+           ${tmpfile} > ${tmpfile}.a
+    mv ${tmpfile}.a ${tmpfile}
+  fi
+  if [[ ! -z "${authoritative_member_node}" ]]; then
+    ${XML} ed -u "//authoritativeMemberNode" -v "${authoritative_member_node}" \
+           ${tmpfile} > ${tmpfile}.a
+    mv ${tmpfile}.a ${tmpfile}
+  fi
 }
 
 
 # --- Main ---
 
-while getopts ":hVv:i:s:E:r:n:" OPTION
+while getopts ":hVv:i:s:E:r:n:O:A:" OPTION
 do
     case $OPTION in
       h) usage; exit 1;;
@@ -172,6 +185,8 @@ do
       E) client_certificate=${OPTARG};;
       r) rights_holder=${OPTARG};;
       n) n_replicas=${OPTARG};;
+      O) origin_member_node=${OPTARG};;
+      A) authoritative_member_node=${OPTARG};;
       v) LOGLEVEL=$OPTARG;;
       V) show_version; exit 1;;
       \?) echo "ERROR:   Invalid option: -$OPTARG";usage; exit 1;;
@@ -204,9 +219,16 @@ if [[ -z "${format_id}" ]]; then
   lwarn "Setting to default formatId of ${format_id}"
 fi
 
+if [[ ! -z "${origin_member_node}" ]]; then
+  if [[ -z "${authoritative_member_node}" ]]; then
+    authoritative_member_node="${origin_member_node}"
+    lwarn "authoritativeMemberNode set to same as originMemberNode (${origin_member_node})"
+  fi
+fi
+
 getFileChecksum ${fobject}
 getFileSize ${fobject}
 generateSystemMetadata
-
 cat ${tmpfile}
+rm ${tmpfile}
 
