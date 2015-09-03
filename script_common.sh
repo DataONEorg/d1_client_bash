@@ -21,6 +21,9 @@
 #xmlstarlet application
 XML="xml"
 
+#Version 1 general namespace
+NAMESPACE="http://ns.dataone.org/service/types/v1"
+
 #Location of configuration info required for some scripts.
 DATAONE_CONFIG_FOLDER="${HOME}/.dataone"
 DATAONE_CONFIG="${DATAONE_CONFIG_FOLDER}/d1bash.cfg"
@@ -187,4 +190,6 @@ addURLKV()
   uval=$(echo $3 | ${URLENCODE})
   URL="${1}${delim}${2}=${uval}"
 }
+
+locateXML
 
