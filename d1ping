@@ -3,14 +3,19 @@
 # Ping a DataONE node, returning the time taken for operation.
 # Exit code and parameters can conform to nagios3 plugin expectations
 
-VERSION="Version 0.0.3"
-CURL="/usr/bin/curl -k -s -o /dev/null"
+VERSION="Version 1.1.0"
+APPNAME=$(basename "${0}")
+APPDIR=$(dirname "${0}")
+TMPDIR="/tmp"
+#CURL="/usr/bin/curl -k -s -o /dev/null"
+
+source "${APPDIR}/script_common.sh"
+
 
 HTTP="https"
-baseurl=$NODE
-verbose=""
-raw=""
-nagios=""
+baseurl=${NODE}
+raw=0
+nagios=0
 warning=1.00
 critical=10.0
 host=""
@@ -20,7 +25,7 @@ usage()
 {
 cat << EOF
 
-$(basename $0) OPTIONS
+${APPNAME} OPTIONS
 
 Ping the DataONE node specified by the NODE environment variable or from the -n
 parameter. This script can be used as a Nagios plugin for a basic check of node
@@ -29,37 +34,33 @@ availablility. To do so, just call with -n and optionally -c and -w.
 OPTIONS:
 
   -h  Show this message
-  -b  Node to create the new object ($NODE)
+  -b  Node to create the new object (${NODE})
   -r  Show raw response
-  -v  Be a bit more verbose
+  -v  Set log level (1=error ... 4=debug)
   -V  Show version (${VERSION})
-  -w  Warning threshold (ping time in seconds, ${warning})
-  -c  Critical threshold (ping time in seconds, ${critical})
+  -w  Nagios warning threshold (ping time in seconds, ${warning})
+  -c  Nagios critical threshold (ping time in seconds, ${critical})
   -H  Host name, must set -P node type when used
   -P  Base path for node, e.g. "/knb/d1/mn", "/mn", or "/cn"
-  -T  Don't use SSL (i.e. http rather than https)
+  -T  Do not use SSL (i.e. http rather than https)
 
 EOF
 }
 
-show_version()
-{
-  echo ${VERSION}
-}
 
 ## Parse the command line
-while getopts "hvVrTb:w:c:H:P:" OPTION
+while getopts "hv:VrTb:w:c:H:P:" OPTION
 do
     case $OPTION in
       h) usage; exit 1;;
-      b) baseurl=$OPTARG;;
-      v) verbose=1;;
+      b) baseurl=${OPTARG};;
       r) raw=1;;
-      w) warning=$OPTARG;;
-      c) critical=$OPTARG;;
-      V) show_version;;
-      H) host=$OPTARG;;
-      P) basePath=$OPTARG;;
+      w) warning=${OPTARG};;
+      c) critical=${OPTARG};;
+      V) showVersion;;
+      v) LOGLEVEL=${OPTARG};;
+      H) host=${OPTARG};;
+      P) basePath=${OPTARG};;
       T) HTTP="http";;
       \?) usage; exit 1;;
     esac
@@ -68,34 +69,31 @@ done
 # Set baseurl if host and base path provided
 if [[ -n ${host} ]]; then
   if [[ -z ${basePath} ]]; then
-    echo "-P base path required with -H host"
+    lerror "-P base path required with -H host"
     exit 3
   fi
   baseurl="${HTTP}://${host}${basePath}"
+  linfo "Base URL set to ${baseurl}"
 fi
 
 if [[ -z ${baseurl} ]]; then
-  echo "NODE, -b, or -H and -P required"
+  lerror "NODE, -b, or -H and -P required"
   exit 1
 fi
 
 ## Ping API REST endpoint
 url="${baseurl}/v1/monitor/ping"
-if [[ -n ${verbose} ]]; then
-  echo "URL     : ${url}"
-fi
+linfo "URL     : ${url}"
 
-if [[ -n ${raw} ]]; then
+if (( ${raw} > 0 )); then
   ## Just ping, verbosely and exit
-  ${CURL} -v "${url}"
+  curl -k -s -v "${url}"
   exit 3
 else
   ## Ping and retrieve status code from HTTP response
-  CMD="${CURL} -w \"%{http_code} \" \"${url}\""
+  CMD="curl -k -s -w \"%{http_code} \" \"${url}\""
 fi
-if [[ -n ${verbose} ]]; then
-  echo "Command : ${CMD}"
-fi
+linfo "Command: ${CMD}"
 
 ## Run the request, timing how long it takes
 SAVET=$TIMEFORMAT
@@ -105,17 +103,16 @@ TIMEFORMAT=$SAVET
 
 ## Figure out the exit level based on response status and duration
 ## 3 = unknown, 2 = failure / critical, 1 = warning, 0 = sweet
-if [[ -n ${verbose} ]]; then
-  echo "Result  : ${res[0]}, ${res[1]}"
-  exit 3
+linfo "Result  : ${res[0]}, ${res[1]}"
 EC=2
 echo ${res[1]}
-if [[ "${res[0]}"=="200" ]]; then
+if (( ${res[0]} == 200 )); then
   EC=1
-  if [[ ${res[1]} < ${warning} ]]; then
+  if [[ "${res[1]}" < ${warning} ]]; then
     EC=0
-  elif [[ ${res[1]} > ${critical} ]]; then
+  elif [[ "${res[1]}" > ${critical} ]]; then
     EC=2
   fi
 fi
+linfo "Exit code = ${EC}"
 exit ${EC}
