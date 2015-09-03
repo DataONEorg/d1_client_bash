@@ -3,72 +3,24 @@
 # Report on a PID
 #
 
-VERSION="1.1.2"
-APPNAME=$(basename ${0})
-APPDIR=$(pwd)
+VERSION="1.2.0"
+APPNAME=$(basename "${0}")
+APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
-URLENCODE="$(dirname ${0})/urlencode"
-XML="/usr/local/bin/xml"
+URLENCODE="${APPDIR}/urlencode"
+
+# possibly override initialized variables
+source "${APPDIR}/script_common.sh"
+locateXML
+
 sysm_dest="${TMPDIR}/sysmeta.$$.xml"
 node_list="${TMPDIR}/nodes.$$.xml"
 search_out="${TMPDIR}/search.$$.xml"
-VERBOSE=""
-base_url="https://cn.dataone.org/cn"
-show_obsol_chain=""
-show_search_index=""
 
-# console colors, use echo -e ...
-XC='\033[0;30m' #black
-RC='\033[0;31m' #red
-GC='\033[0;32m' #green
-YC='\033[0;33m' #yellow
-BC='\033[0;34m' #blue
-MC='\033[0;35m' #magenta
-CC='\033[0;36m' #cyan
-WC='\033[0;37m' #white
+base_url="${NODE}"
+show_obsol_chain=0
+show_search_index=0
 
-# Bold
-BXC='\033[1;30m' #black
-BRC='\033[1;31m' #red
-BGC='\033[1;32m' #green
-BYC='\033[1;33m' #yellow
-BBC='\033[1;34m' #blue
-BMC='\033[1;35m' #magenta
-BCC='\033[1;36m' #cyan
-BWC='\033[1;37m' #white
-
-NC='\033[0m'     #reset
-
-
-function showVersion() {
-  echo ${VERSION}
-}
-
-
-function locateXML() {
-  CANDIDATE=`which xml`
-  if [[ -x ${CANDIDATE} ]]; then
-      # We're good to go, use CANDIDATE
-      XML=${CANDIDATE}
-  else
-    # MAYBE its called XMLSTARLET 
-    CANDIDATE=`which xmlstarlet`
-    if [[ -x ${CANDIDATE} ]]; then
-      # We're good to go, use CANDIDATE
-      XML=${CANDIDATE}
-    else
-      # Nothing found on path, try the standard location
-      CANDIDATE="/usr/local/bin/xml"
-      if [[ -x ${CANDIDATE} ]]; then
-        XML=${CANDIDATE}
-      else
-        # Can't find xmlstarlet, so exit
-        lerror "Can not locate the 'xml' or 'xmlstarlet' program.  Please install and retry."
-        exit
-      fi
-    fi
-  fi
-}
 
 function lecho() {
   if [[ ! -z ${3} ]]; then
@@ -80,25 +32,8 @@ function lecho() {
     printf "%20s : %s\n" "${1}" "${2}"
   fi
   if [[ ! -z ${3} ]]; then
-    printf ${NC}
+    printf ${_NCOLOR}
   fi
-}
-
-
-function log() {
-  if [[ ! -z ${VERBOSE} ]]; then
-    echo -e ${GC}"LOG: $@"${NC} 1>&2;
-  fi
-}
-
-
-function lwarn() {
-  echo -e ${RC}"WARN: $@"${NC} 1>&2;
-}
-
-
-function lerror() {
-  echo -e ${BRC}"ERROR: $@"${NC} 1>&2;
 }
 
 
@@ -116,8 +51,8 @@ OPTIONS:
   -b  Base URL of Coordinating Node to use
   -o  Show obsolescence chain for object
   -s  Show presence of object in CN search index
-  -v  Show version and exit
-  -V  Verbose output to STDERR
+  -v  Set log level (1=error ... 4=debug)
+  -V  Show version and exit
 
 PID:
   The identifier to lookup. 
@@ -174,37 +109,27 @@ EOF
 
 
 function loadNodes() {
-  log "Loading node list..."
+  linfo "Loading node list..."
   local url="${base_url}/v1/node"
   local CMD="curl -k -s -w \"%{http_code}\" -o \"${node_list}\" \"${url}\""
   status=$(eval ${CMD})
-  log "HTTP status = ${status}"
-}
-
-
-function escapeSolrTerm() {
-  # Escapes $1 as a term for a solr query
-  local _t="${1//\\/\\\\}"
-  _t="${_t//:/\\:}"
-  _t="${_t//+/\\+}"
-  _t="${_t//-/\\-}"
-  _t="${_t//[/\\[}"
-  _t="${_t//]/\\]}"
-  _t="${_t//(/\\(}"
-  _t="${_t//)/\\)}"
-  #_t="${_t//\//\\\/}"
-  echo "${_t}"
+  ldebug "loadNodes HTTP status = ${status}"
+  if (( ${status} != 200 )); then
+    lerror "Status code of ${status} returned for listNodes"
+    lerror "URL = ${url}"
+  fi
 }
 
 
 function processSearchIndex() {
   # look for PID $1 entry in search index
+  ldebug "processSearchIndex ${1}"
   local term=$(escapeSolrTerm ${1})
-  log "Escaped identifier = ${term}"
+  linfo "Escaped identifier = ${term}"
   local q="$(echo "identifier:${term}" | ${URLENCODE})"
   local url="${base_url}/v1/query/solr/?q=${q}"
   local CMD="curl -k -s -w \"%{http_code}\" -o \"${search_out}\" \"${url}\""
-  log "CMD = ${CMD}"
+  linfo "CMD = ${CMD}"
   local status=$(eval ${CMD})
   lecho "Search status" "${status}"
   local num_found=$(${XML} sel -t -m "//result" -v "@numFound" ${search_out})
@@ -236,12 +161,12 @@ function processSearchIndex() {
   fi
   if [ "${otype}" == "RESOURCE" ]; then
     # Lookup all the objects contained in this resource map
-    log "Evaluating resource map references"
+    linfo "Evaluating resource map references"
     term=$(escapeSolrTerm ${1})
     q="$(echo "resourceMap:${term}" | ${URLENCODE})"
     local url="${base_url}/v1/query/solr/?fl=identifier&q=${q}"
     local CMD="curl -k -s -w \"%{http_code}\" -o \"${search_out}\" \"${url}\""
-    log "CMD = ${CMD}"
+    linfo "CMD = ${CMD}"
     status=$(eval ${CMD})
     lecho "Search Resource Map" "${status}"
     local documents=$(${XML} sel -t -m "//str[@name='identifier']" -v  "." -n ${search_out})
@@ -258,13 +183,14 @@ function processSearchIndex() {
 function showLocations() {
   # $1 = system metadata
   # $2 = encoded pid
+  ldebug "showLocations"
   local replicas=$($XML sel -t -m "//replica" -v "replicaMemberNode" -n ${1})
   local lstatus=""
   local sysm="${sysm_dest}.3"
   for replica in ${replicas}; do
     local burl=$($XML sel -t -m "//node[identifier = '${replica}']" -v "baseURL" ${node_list})
     burl="${burl}/v1/meta/${2}"
-    log "Replica system metadata URL = ${burl}"
+    linfo "Replica system metadata URL = ${burl}"
     local CMD="curl -k -s -w \"%{http_code}\" -o \"${sysm}\" \"${burl}\""
     status=$(eval ${CMD})
     lecho "Replica" "${replica}  (HTTP: ${status})"
@@ -273,6 +199,7 @@ function showLocations() {
 
 
 function followObsoletes() {
+  ldebug "followObsoletes"
   local xp="//obsoletes"
   local msg="Obsoletes"
   local indent="$(printf '%*s' "${2}" | tr ' ' "-")+"
@@ -285,10 +212,10 @@ function followObsoletes() {
   local url="${base_url}/v1/meta/${epid}"
   local sysm="${sysm_dest}.2"
   local CMD="curl -k -s -w \"%{http_code}\" -o \"${sysm}\" \"${url}\""
-  log ${CMD}
+  linfo ${CMD}
   status=$(eval ${CMD})
-  log "HTTP status = ${status}"
-  if [[ ${status} -ne "200" ]]; then
+  linfo "HTTP status = ${status}"
+  if (( ${status} != 200 )); then
     lerror "Unable to access obsoleted object (${status}): ${1}"
     return
   fi
@@ -306,6 +233,7 @@ function followObsoletes() {
 function processSystemMetadata() {
   # $1 = path to system metadata
   # $2 = PID encoded
+  ldebug "processSystemMetadata"
   local pid=$(${XML} sel -t -m "//identifier" -v "." ${1})
   local origin_mn=$(${XML} sel -t -m "//originMemberNode" -v "." ${1})
   local auth_mn=$(${XML} sel -t -m "//authoritativeMemberNode" -v "." ${1})
@@ -326,7 +254,7 @@ function processSystemMetadata() {
   lecho "Archived" "${arch}"
   lecho "Format ID" "${fmtid}"
 
-  if [[ ! -z ${show_obsol_chain} ]]; then
+  if (( ${show_obsol_chain} > 0 )); then
     if [[ ! -z ${obsol} ]]; then
       followObsoletes ${pid} "0" "obsoletes"
     fi
@@ -341,37 +269,38 @@ function processSystemMetadata() {
 
 function getPidInfo() {
   # $1 = PID
-  lecho "Evaluating" ${1}
+  ldebug "getPIDInfo"
+  lecho "Evaluating" ${PID}
   local PID_encoded="$(echo ${PID} | ${URLENCODE})"
   lecho "URL encoded" ${PID_encoded}
 
   #get system metadata and status code
   local url="${base_url}/v1/meta/${PID_encoded}"
-  log "System metadata = ${sysm_dest}"
+  linfo "System metadata = ${sysm_dest}"
   local CMD="curl -k -s -w \"%{http_code}\" -o \"${sysm_dest}\" \"${url}\""
-  log ${CMD}
+  linfo ${CMD}
   status=$(eval ${CMD})
   lecho "CN HTTP Response" ${status}
-  if [[ ${status} -ne "200" ]]; then
+  if (( ${status} != 200 )); then
     lerror "Further evaluation not possible, terminating."
     return
   fi
   processSystemMetadata ${sysm_dest} ${PID_encoded}
 
-  if [[ ! -z ${show_search_index} ]]; then
-    processSearchIndex ${1}
+  if (( ${show_search_index} > 0 )); then
+    processSearchIndex ${PID}
   fi
 }
 
 
 # === Main ===
-while getopts "hHvVosb:" OPTION
+while getopts "hHv:Vosb:" OPTION
 do
   case ${OPTION} in
     h) usage; exit 1;;
     H) usageExamples; exit 1;;
-    v) showVersion; exit 1;;
-    V) VERBOSE=1;;
+    V) showVersion; exit 1;;
+    v) LOGLEVEL=${OPTARG};;
     o) show_obsol_chain=1;;
     s) show_search_index=1;;
     b) base_url=${OPTARG};;
@@ -388,7 +317,7 @@ fi
 locateXML
 loadNodes
 getPidInfo ${PID}
-log "Cleaning up"
+linfo "Cleaning up"
 rm ${sysm_dest}
 rm ${node_list}
 rm -f ${search_out}

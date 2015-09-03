@@ -164,7 +164,7 @@ containsElement () {
 
 # Escapes $1 as a term for a solr query
 escapeSolrTerm() {
-  local _t="${2//\\/\\\\}"
+  local _t="${1//\\/\\\\}"
   _t="${_t//:/\\:}"
   _t="${_t//+/\\+}"
   _t="${_t//-/\\-}"
