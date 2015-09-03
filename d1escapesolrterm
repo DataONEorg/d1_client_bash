@@ -1,70 +1,35 @@
 #!/bin/bash
+
 # Escape a solr query term
 
-VERSION="1.0.1"
-APPNAME=$(basename ${0})
-APPDIR=$(pwd)
+# This work was created by participants in the DataONE project, and is
+# jointly copyrighted by participating institutions in DataONE. For
+# more information on DataONE, see our web site at https://dataone.org.
+#
+#   Copyright 2015
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+VERSION="1.2.0"
+APPNAME=$(basename "${0}")
+APPDIR=$(dirname "${0}")
+TMPDIR="/tmp"
+
+source "${APPDIR}/script_common.sh"
 URLENCODE="$(dirname ${0})/urlencode"
-VERBOSE=""
-do_url_encode=""
 
-# console colors, use echo -e ...
-XC='\033[0;30m' #black
-RC='\033[0;31m' #red
-GC='\033[0;32m' #green
-YC='\033[0;33m' #yellow
-BC='\033[0;34m' #blue
-MC='\033[0;35m' #magenta
-CC='\033[0;36m' #cyan
-WC='\033[0;37m' #white
-
-# Bold
-BXC='\033[1;30m' #black
-BRC='\033[1;31m' #red
-BGC='\033[1;32m' #green
-BYC='\033[1;33m' #yellow
-BBC='\033[1;34m' #blue
-BMC='\033[1;35m' #magenta
-BCC='\033[1;36m' #cyan
-BWC='\033[1;37m' #white
-
-NC='\033[0m'     #reset
-
-function showVersion() {
-  echo ${VERSION}
-}
-
-
-function lecho() {
-  if [[ ! -z ${3} ]]; then
-    printf ${3}
-  fi
-  if [[ ! -z ${4} ]]; then
-    printf "%20s : %${4}s\n" "${1}" "${2}"
-  else
-    printf "%20s : %s\n" "${1}" "${2}"
-  fi
-  if [[ ! -z ${3} ]]; then
-    printf ${NC}
-  fi
-}
-
-
-function log() {
-  if [[ ! -z ${VERBOSE} ]]; then
-    echo -e ${GC}"LOG: $@"${NC} 1>&2;
-  fi
-}
-
-
-function lwarn() {
-  echo -e ${RC}"WARN: $@"${NC} 1>&2;
-}
-
-
-function lerror() {
-  echo -e ${BRC}"ERROR: $@"${NC} 1>&2;
-}
+do_url_encode=0
 
 
 function usage() {
@@ -78,9 +43,9 @@ Escape a term for use in a solr query.
 OPTIONS:
   -h  Show this message
   -H  Show this message with examples
-  -u  Show URL escaped form
-  -v  Show version and exit
-  -V  Verbose output to STDERR
+  -u  URL encode the solr escaped value
+  -v  Set log level (1=error ... 4=debug)
+  -V  Show version and exit
 
 TERM:
   The solr query term to escape.
@@ -94,36 +59,20 @@ function usageExamples() {
 cat << EOF
 Example - Escape a DataONE identifier:
 
-  ./${APPNAME} -o "https://pasta.lternet.edu/package/metadata/eml/knb-lter-gce/249/33"
+  ./${APPNAME} "https://pasta.lternet.edu/package/metadata/eml/knb-lter-gce/249/33"
 
 EOF
 }
 
 
-function escapeSolrTerm() {
-  # Escapes $1 as a term for a solr query
-  local _t="${1//\\/\\\\}"
-  _t="${_t//:/\\:}"
-  _t="${_t//+/\\+}"
-  _t="${_t//-/\\-}"
-  _t="${_t//[/\\[}"
-  _t="${_t//]/\\]}"
-  _t="${_t//(/\\(}"
-  _t="${_t//)/\\)}"
-  #_t="${_t//\//\\\/}"
-  echo "${_t}"
-}
-
-
-#=== Main ===
-
-while getopts "hHvVu" OPTION
+# === Main ===
+while getopts "hHv:Vu" OPTION
 do
   case ${OPTION} in
     h) usage; exit 1;;
     H) usageExamples; exit 1;;
-    v) showVersion; exit 1;;
-    V) VERBOSE=1;;
+    V) showVersion; exit 1;;
+    v) LOGLEVEL=${OPTARG};;
     u) do_url_encode=1;;
     \?) usage; exit 1;;
   esac
@@ -132,15 +81,15 @@ done
 shift $((OPTIND-1))
 TERM=${1}
 if [[ -z ${TERM} ]]; then
-  echo "TERM to escape is required."
+  lerror "TERM to escape is required."
   exit 1
 fi
-log "TERM = ${TERM}"
+linfo "TERM to escape = ${TERM}"
 term_escaped="$(escapeSolrTerm ${TERM})"
-log "solr escaped = ${term_escaped}"
+linfo "Solr escaped TERM = ${term_escaped}"
 term_url_escaped=$(echo ${term_escaped} | ${URLENCODE})
-log "url+solr escaped = ${term_url_escaped}"
-if [[ ! -z ${do_url_encode} ]]; then
+linfo "url+solr escaped TERM = ${term_url_escaped}"
+if (( ${do_url_encode} > 0 )); then
   echo ${term_url_escaped}
 else
   echo ${term_escaped}
