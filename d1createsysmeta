@@ -26,6 +26,7 @@ client_certificate="${MY_CLIENT_CERT}"
 fobject=""
 origin_member_node=""
 authoritative_member_node=""
+dest_file=""
 
 usage()
 {
@@ -46,6 +47,7 @@ OPTIONS:
   -n  Suggested number of replicas (${n_replicas})
   -O  Set originMemberNode value 
   -A  Set authoritativeMemberNode value
+  -d  Save results to specified file (must not exist)
   -v  Set log level (1=error ... 4=debug)
   -V  Show version (${VERSION})
 
@@ -105,11 +107,9 @@ genBlankV1SystemMetadata() {
       <permission>read</permission>
     </allow>
   </accessPolicy>
+  <replicationPolicy replicationAllowed='false' />
   <dateUploaded>${tstamp}.000+00:00</dateUploaded>
   <dateSysMetadataModified>${tstamp}.000+00:00</dateSysMetadataModified>
-  <replicationPolicy replicationAllowed='false' />
-  <authoritativeMemberNode />
-  <originMemberNode />
 </ns1:systemMetadata>
 EOF
 }
@@ -126,8 +126,8 @@ EOF
 #  [replication_policy] = optional replicationPolicy fragment
 #  [origin_member_node] = optional originMemberNode id (will be replaced by a 
 #                         MN during create)
-#  [authoritative_member_node] = optional authoritativeMemberNode (will be 
-#                         replaced by a Member Node during create)
+#  [authoritative_member_node] = optional authoritativeMemberNode (will also  
+#                         set originMemberNode in the sysmeta)
 #
 # Output is to stdout
 generateSystemMetadata() {
@@ -160,22 +160,24 @@ generateSystemMetadata() {
               ${tmpfile} > ${tmpfile}.a
     mv ${tmpfile}.a ${tmpfile}
   fi
-  if [[ ! -z "${origin_member_node}" ]]; then
-    ${XML} ed -u "//originMemberNode" -v "${origin_member_node}" \
-           ${tmpfile} > ${tmpfile}.a
-    mv ${tmpfile}.a ${tmpfile}
-  fi
   if [[ ! -z "${authoritative_member_node}" ]]; then
-    ${XML} ed -u "//authoritativeMemberNode" -v "${authoritative_member_node}" \
+    ${XML} ed -a "//dateSysMetadataModified" \
+           -t elem -n "authoritativeMemberNode" \
+           -v "${authoritative_member_node}" \
            ${tmpfile} > ${tmpfile}.a
     mv ${tmpfile}.a ${tmpfile}
   fi
+#  if [[ ! -z "${origin_member_node}" ]]; then
+#    ${XML} ed -a "//originMemberNode" -v "${origin_member_node}" \
+#           ${tmpfile} > ${tmpfile}.a
+#    mv ${tmpfile}.a ${tmpfile}
+#  fi
 }
 
 
 # --- Main ---
 
-while getopts ":hVv:i:s:E:r:n:O:A:" OPTION
+while getopts ":hVv:i:s:E:r:n:O:A:d:f:" OPTION
 do
     case $OPTION in
       h) usage; exit 1;;
@@ -186,6 +188,8 @@ do
       n) n_replicas=${OPTARG};;
       O) origin_member_node=${OPTARG};;
       A) authoritative_member_node=${OPTARG};;
+      d) dest_file=${OPTARG};;
+      f) format_id=${OPTARG};;
       v) LOGLEVEL=$OPTARG;;
       V) show_version; exit 1;;
       \?) echo "ERROR:   Invalid option: -$OPTARG";usage; exit 1;;
@@ -198,6 +202,11 @@ fobject="${1}"
 
 if [[ ! -f "${fobject}" ]]; then
   lerror "The specified file does not exist: ${fobject}"
+  exit 1
+fi
+
+if [[ -e "${dest_file}" ]]; then
+  lerror "Destination file exists. Can not overwrite."
   exit 1
 fi
 
@@ -221,16 +230,22 @@ if [[ -z "${format_id}" ]]; then
   lwarn "Setting to default formatId of ${format_id}"
 fi
 
-if [[ ! -z "${origin_member_node}" ]]; then
-  if [[ -z "${authoritative_member_node}" ]]; then
-    authoritative_member_node="${origin_member_node}"
-    lwarn "authoritativeMemberNode set to same as originMemberNode (${origin_member_node})"
+if [[ ! -z "${authoritative_member_node}" ]]; then
+  if [[ -z "${origin_member_node}" ]]; then
+    origin_member_node="${authoritative_member_node}"
+    lwarn "originMemberNode set to same as authoritativeMemberNode (${origin_member_node})"
   fi
 fi
+
 
 getFileChecksum ${fobject}
 getFileSize ${fobject}
 generateSystemMetadata
-cat ${tmpfile}
+if [[ -z "${dest_file}" ]]; then
+  cat ${tmpfile}
+else
+  cp "${tmpfile}" "${dest_file}"
+fi
+
 rm ${tmpfile}
 

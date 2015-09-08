@@ -12,6 +12,10 @@ TMPDIR="/tmp"
 source "${APPDIR}/script_common.sh"
 locateXML
 
+if [[ "${CURL}" != "curl" ]]; then
+  linfo "Using curl at: ${CURL}"
+fi
+
 baseurl=${MNODE}
 raw=0
 dryrun=0
@@ -105,7 +109,7 @@ linfo "Submitter subject is: ${submitter}"
 
 url="${baseurl}/v1/object"
 
-CMD="curl -k -s -E \"${client_certificate}\" -X POST -w \"%{http_code}\" \
+CMD="${CURL} -k -s -E \"${client_certificate}\" -X POST -w \"%{http_code}\" \
  -o \"${tmpfile}\" -F \"pid=${PID}\" -F \"object=@${fobject}\" \
  -F \"sysmeta=@${fsysmeta}\" \"${url}\""
 
