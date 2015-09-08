@@ -3,7 +3,7 @@
 # Create system metadata for a file.
 #
 
-VERSION="1.2.1"
+VERSION="1.2.2"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -68,7 +68,7 @@ getFileChecksum() {
 
 # set $file_size to the size in bytes of the files specified in $1
 getFileSize() {
-  if [[ $(uname) -eq "Darwin" ]]; then
+  if [[ "$(uname)" == "Darwin" ]]; then
     file_size=$(stat -f%z "${1}")
   else
     file_size=$(stat -c%s "${1}")
