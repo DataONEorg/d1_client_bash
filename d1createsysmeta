@@ -3,7 +3,7 @@
 # Create system metadata for a file.
 #
 
-VERSION="1.2.0"
+VERSION="1.2.1"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -213,7 +213,7 @@ fi
 if [[ -f "${client_certificate}" ]]; then
   ldebug "Examining ${client_certificate} for submitter subject..."
   ll=$(echo "10*(5-${LOGLEVEL})" | bc)
-  submitter=$(d1mysubject.py -l ${ll} "${client_certificate}")
+  submitter=$(${APPDIR}/d1mysubject.py -l ${ll} "${client_certificate}")
   if [[ $? -ne 0 ]]; then
     lwarn "Certificate has expired."
   fi
