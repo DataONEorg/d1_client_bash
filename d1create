@@ -3,7 +3,7 @@
 # Creates content on a DataONE member node. 
 #
 
-VERSION="Version 1.1.0"
+VERSION="Version 1.1.1"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -14,6 +14,11 @@ locateXML
 
 if [[ "${CURL}" != "curl" ]]; then
   linfo "Using curl at: ${CURL}"
+fi
+
+if [[ ! -e ${CURL} ]]; then
+  lerror "Could not find curl executable. Unable to continue."
+  exit 1
 fi
 
 baseurl=${MNODE}
@@ -60,6 +65,9 @@ getIdentifierFromSystemMetadata() {
 
 
 # --- Main ---
+
+echo "curl = ${CURL}"
+exit
 
 while getopts "hv:VrDb:E:" OPTION
 do
@@ -127,7 +135,7 @@ if [[ ${status} -eq 200 ]]; then
   if [[ ${raw} -gt 0 ]]; then
     cat ${tmpfile}
   else
-    xml fo ${tmpfile}
+    ${XML} fo ${tmpfile}
   fi
 elif [[ ${status} -eq 401 ]]; then
   lerror "Node responded with Not Authorized."
