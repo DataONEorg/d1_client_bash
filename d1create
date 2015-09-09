@@ -3,7 +3,7 @@
 # Creates content on a DataONE member node. 
 #
 
-VERSION="Version 1.1.1"
+VERSION="Version 1.2.0"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -64,10 +64,28 @@ getIdentifierFromSystemMetadata() {
 }
 
 
-# --- Main ---
+# validate system metadata
+# errors are reported on stderr
+# $1 = sysmetadata file
+# Sets $is_valid
+validateSystemMetadataV1() {
+  ldebug "valdiateSystemMetadataV1 ${1}"
+  local _schema="http://ns.dataone.org/service/types/v1"
+  local _err="${TMPDIR}/${APPNAME}_val.$$.txt"
+  ldebug ${_err}
+  local _res=$(${XML} val --net -e -s ${_schema} ${1} 2>${_err})
+  ldebug ${_res}
+  is_valid=${_res##* }
+  if [[ "${is_valid}" == "invalid" ]]; then
+    while read line || [[ -n ${line} ]]; do
+      lerror ${line}
+    done < ${_err}
+  fi
+  rm ${_err}
+}
 
-echo "curl = ${CURL}"
-exit
+
+# --- Main ---
 
 while getopts "hv:VrDb:E:" OPTION
 do
@@ -98,6 +116,12 @@ fi
 
 if [[ -z ${baseurl} ]]; then
   lerror "MNODE or -b required"
+  exit 1
+fi
+
+validateSystemMetadataV1 "${fsysmeta}"
+if [[ "${is_valid}" == "invalid" ]]; then
+  lerror "System metadata is not valid. Aborting."
   exit 1
 fi
 
