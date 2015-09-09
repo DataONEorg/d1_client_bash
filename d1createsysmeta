@@ -3,7 +3,7 @@
 # Create system metadata for a file.
 #
 
-VERSION="1.2.2"
+VERSION="1.2.3"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -61,7 +61,11 @@ EOF
 
 # set $checksum to the MD5 checksum value for the file specified in $1
 getFileChecksum() {
-  checksum=$(md5 -q "${1}")
+  if [[ "$(uname)" == "Darwin" ]]; then
+    checksum=$(md5 -q "${1}")
+  else
+    checksum=$(md5sum "${1}" | cut -d ' ' -f 1)
+  fi
   ldebug "Checksum = ${checksum}"
 }
 
