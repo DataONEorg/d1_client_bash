@@ -185,13 +185,29 @@ escapeSolrTerm() {
 # updates ${URL}
 addURLKV()
 {
-  delim="?"
+  local delim="?"
   if [[ "${1}" == *\?* ]]; then
     delim="&"
   fi
   uval=$(echo $3 | ${URLENCODE})
   URL="${1}${delim}${2}=${uval}"
 }
+
+
+# Get the nodeId of the node with baseUrl $1
+getNodeId() {
+  local url="${1}/v1/node"
+  ${CURL} -k -s "${url}" | xml sel -t -m "//identifier" -v "."
+}
+
+
+# Get hostname from a URL $1
+getHostFromURL() {
+  local _tmp=${1#*/}
+  basename ${_tmp%/*}
+}
+
+
 
 locateXML
 
