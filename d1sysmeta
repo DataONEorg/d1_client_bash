@@ -2,22 +2,23 @@
 #
 # Show system metadata for an object.
 
-VERSION="Version 0.0.3"
-NAMESPACE="d=http://ns.dataone.org/service/types/v1"
-TMP="/tmp"
+VERSION="Version 1.0.1"
+APPNAME=$(basename "${0}")
+APPDIR=$(dirname "${0}")
+TMPDIR="/tmp"
 
 #Takes stdin and URL encodes with output to stdout 
-URLENCODE="`dirname $0`/urlencode"
+URLENCODE="${APPDIR}/urlencode"
 
-#Location of xmlstarlet command
-XML="/usr/local/bin/xml"
+# possibly override initialized variables
+source "${APPDIR}/script_common.sh"
+locateXML
 
 baseurl=${NODE}
 raw=""
-verbose=""
-sysmdest="${TMP}/sysmeta.$$.xml"
-keepSysm=""
-testOnly=""
+sysm_dest="${TMPDIR}/sysmeta.$$.xml"
+keep_sysm=""
+test_only=""
 
 usage()
 {
@@ -32,8 +33,9 @@ OPTIONS:
 
   -h  Show this message
   -b  Node from which to retrieve system metadata (${baseurl})
+  -E  Client certificate for authentication (optional)
   -r  Show raw response
-  -v  Be a bit more verbose
+  -v  Set log level (1=error ... 4=debug)
   -V  Show version and exit (${VERSION})
   -Y  File name for saved response document (${sysmdest})
   -k  Keep response document (default is to delete on exit)
@@ -42,71 +44,64 @@ EOF
 }
 
 
-show_version()
-{
-  echo ${VERSION}
-}
-
-while getopts "hvVrktb:Y:" OPTION
+while getopts "hvVrktb:Y:E:" OPTION
 do
     case $OPTION in
       h) usage; exit 1;;
       b) baseurl=$OPTARG;;
       v) verbose=1;;
       r) raw=1;;
-      V) show_version; exit 1;;
-      Y) sysmDest=$OPTARG;;
-      k) keepSysm=1;;
-      t) testOnly=1;;
+      V) showVersion; exit 1;;
+      Y) sysm_dest=$OPTARG;;
+      E) client_cert=${OPTARG};;
+      k) keep_sysm=1;;
+      t) test_only=1;;
       \?) usage; exit 1;;
     esac
 done
 
 if [[ -z ${baseurl} ]]; then
-  echo "NODE or -b required"
+  lerror "NODE or -b required"
   exit 1
 fi
 shift $(($OPTIND - 1))
 if [[ -z ${1} ]]; then
-  echo "PID is required"
+  lerror "PID is required"
   exit 1
 fi
 
 PID="$(echo $1 | ${URLENCODE})"
-if [[ -n ${verbose} ]]; then
-  echo "PID     : ${1}"
-  echo "Encoded : ${PID}"
-fi
+linfo "PID     : ${1}"
+linfo "Encoded : ${PID}"
 
 url="${baseurl}/v1/meta/${PID}"
-CMD="curl -k -s -w \"%{http_code}\" -o \"${sysmdest}\" \"${url}\""
-if [[ -n ${verbose} ]]; then
-  echo "Command : ${CMD}"
+CMD="curl -k -s -w \"%{http_code}\" -o \"${sysm_dest}\" \"${url}\""
+if [[ ! -z ${client_cert} ]]; then 
+  CMD="curl -k -s -E \"${client_cert}\" -w \"%{http_code}\" -o \"${sysm_dest}\" \"${url}\""
 fi
+linfo "Command : ${CMD}"
 
 status=$(eval ${CMD})
-if [[ -n ${testOnly} ]]; then
+if [[ -n ${test_only} ]]; then
   echo ${status}
   exit
 fi
 EC=0
 if [[ ${status} -eq "200" ]]; then
   if [[ -n ${raw} ]]; then
-    cat ${sysmdest}
+    cat ${sysm_dest}
   else
-    if [[ -n ${verbose} ]]; then
-      echo "Status  : ${status}"
-    fi
-    ${XML} fo ${sysmdest}
+    linfo "Status  : ${status}"
+    ${XML} fo ${sysm_dest}
   fi
 else
   EC=2
-  echo "ERROR   : Status of response = ${status}"
-  if [[ -n ${verbose} ]]; then
-    cat ${sysmdest}
+  lerror "Status of response = ${status}"
+  if [ ${LOGLEVEL} -gt 2 ]; then
+    cat ${sysm_dest}
   fi
 fi
-if [[ -z ${keepSysm} ]]; then
-  rm ${sysmdest}
+if [[ -z ${keep_sysm} ]]; then
+  rm ${sysm_dest}
 fi
 exit ${EC}
