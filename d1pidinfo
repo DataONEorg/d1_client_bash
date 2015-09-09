@@ -3,7 +3,7 @@
 # Report on a PID
 #
 
-VERSION="1.2.0"
+VERSION="1.3.0"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -51,6 +51,7 @@ OPTIONS:
   -b  Base URL of Coordinating Node to use
   -o  Show obsolescence chain for object
   -s  Show presence of object in CN search index
+  -L  SSH to CN and grep some logs (can be verbose!)
   -v  Set log level (1=error ... 4=debug)
   -V  Show version and exit
 
@@ -292,9 +293,61 @@ function getPidInfo() {
   fi
 }
 
+# WARNING: This operation can be rather verbose, depending on the activity 
+# associated with the PID
+#
+# You also need shell access on the CN and permission to read the logs, usually 
+# means a member of group adm
+#
+# Connect to the CN via SSH and retrieve information about the PID from the 
+# following logs:
+#   /var/log/dataone/synchronize/cn-synchronization.log*
+#
+# Input:
+#  $1 = level of detail (integer)
+#  $2 = PID to look for
+function grepCNLogsForPID() {
+  local _hostname=$(getHostFromURL ${base_url})
+  linfo "Hostname = ${_hostname}"
+
+  #Check ssh access
+  ldebug "Checking ssh ${USER}@${_hostname}"
+  if ssh ${_hostname} exit; [ $? -eq 255 ]; then
+    lerror "Unable to ssh ${USER}@${_hostname}"
+    return
+  fi
+
+  local _dest_file="${TMPDIR}/synclog.$$.xml"
+  local _logbase="/var/log/dataone"
+  local _cmd="cd ${_logbase}/synchronize; grep '${2}' cn-synchronization.log*"
+  linfo "Command = ${_cmd}"
+  echo "###" > ${_dest_file}
+  echo "# ${_cmd}" >> ${_dest_file}
+  echo "###" >> ${_dest_file}
+  ssh ${_hostname} ${_cmd} >> ${_dest_file}
+
+  _cmd="cd ${_logbase}/index; grep '${2}' cn-index-generator-daemon.log*"
+  linfo "Command = ${_cmd}"
+  echo "" >> ${_dest_file}
+  echo "###" >> ${_dest_file}
+  echo "# ${_cmd}" >> ${_dest_file}
+  echo "###" >> ${_dest_file}
+  ssh ${_hostname} ${_cmd} >> ${_dest_file}
+
+  _cmd="cd ${_logbase}/index; grep '${2}' cn-index-processor-daemon.log*"
+  linfo "Command = ${_cmd}"
+  echo "" >> ${_dest_file}
+  echo "###" >> ${_dest_file}
+  echo "# ${_cmd}" >> ${_dest_file}
+  echo "###" >> ${_dest_file}
+  ssh ${_hostname} ${_cmd} >> ${_dest_file}
+
+  cat ${_dest_file}
+}
+
 
 # === Main ===
-while getopts "hHv:Vosb:" OPTION
+while getopts "hHv:Vosb:L:" OPTION
 do
   case ${OPTION} in
     h) usage; exit 1;;
@@ -304,6 +357,7 @@ do
     o) show_obsol_chain=1;;
     s) show_search_index=1;;
     b) base_url=${OPTARG};;
+    L) grep_logs=${OPTARG};;
     \?) usage; exit 1;;
   esac
 done
@@ -316,7 +370,10 @@ if [[ -z ${PID} ]]; then
 fi
 locateXML
 loadNodes
-getPidInfo ${PID}
+getPidInfo "${PID}"
+if (( ${grep_logs} > 0)); then
+  grepCNLogsForPID ${grep_logs} "${PID}"
+fi
 linfo "Cleaning up"
 rm ${sysm_dest}
 rm ${node_list}
