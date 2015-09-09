@@ -75,6 +75,8 @@ _NCOLOR='\033[0m'     #reset
 # >3 = + debug
 LOGLEVEL=3
 
+CURL="curl"
+
 ## Variables defined before here can be overridden by the
 ## values in $DATAONE_CONFIG
 
