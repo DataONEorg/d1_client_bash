@@ -73,9 +73,11 @@ _NCOLOR='\033[0m'     #reset
 # >1 = + warn
 # >2 = + info
 # >3 = + debug
-LOGLEVEL=3
+if [[ -z "${LOGLEVEL}" ]]; then
+  LOGLEVEL=3
+fi
 
-CURL="curl"
+CURL=$(which curl)
 
 ## Variables defined before here can be overridden by the
 ## values in $DATAONE_CONFIG

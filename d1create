@@ -3,7 +3,7 @@
 # Creates content on a DataONE member node. 
 #
 
-VERSION="Version 1.2.0"
+VERSION="Version 1.2.1"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -12,12 +12,10 @@ TMPDIR="/tmp"
 source "${APPDIR}/script_common.sh"
 locateXML
 
-if [[ "${CURL}" != "curl" ]]; then
-  linfo "Using curl at: ${CURL}"
-fi
+ldebug "Using curl at: ${CURL}"
 
 if [[ ! -e ${CURL} ]]; then
-  lerror "Could not find curl executable. Unable to continue."
+  lerror "Could not find curl executable (${CURL}). Unable to continue."
   exit 1
 fi
 
