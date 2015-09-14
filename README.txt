@@ -27,6 +27,34 @@ Installation
 .. _XMLstarlet: http://xmlstar.sourceforge.net/ 
 
 
+Commands
+--------
+
+
+:cndiff: A utility for environment administrators for comparing identifiers across Coordianting Nodes
+
+:d1create: Create an object on a DataONE Member Node
+
+:d1createsysmeta: Create system metadata for an object
+
+:d1dns: A utility for DataONE administrators to show the current DNS situation for DataONE environments
+
+:d1escapesolrterm: Escapes a term for inclusion in a solr query.
+
+:d1formats: List the object formats registered in a DataONE environment.
+
+:d1get: Retrieve an object from a DataONE node
+
+:d1listobjects: Report on objects available on a DataONE node.
+
+:d1logrecords: Retrieve log records from a node.
+
+:d1mysubject.py: A Python script that parses a PEM certificate and reports the subject string as expected by DataONE services
+
+:d1noderegister: Used by node operators to register a node in a DataONE environment.
+
+:d1nodes: 
+
 Examples
 --------
 
