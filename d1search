@@ -19,7 +19,7 @@ raw=""
 
 # Default to Development environment round-robbin service
 if [[ -z ${baseurl} ]]; then
-  baseurl="https://cn-dev-rr.dataone.org/cn"
+  baseurl="https://cn.dataone.org/cn"
 fi
 
 
