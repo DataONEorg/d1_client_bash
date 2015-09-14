@@ -49,8 +49,7 @@ Commands
 
 :d1logrecords: Retrieve log records from a node.
 
-:d1mysubject.py: A Python script that parses a PEM certificate and reports the
-subject string as expected by DataONE services
+:d1mysubject.py: A Python script that parses a PEM certificate and reports the subject string as expected by DataONE services
 
 :d1noderegister: Used by node operators to register a node in a DataONE environment
 
