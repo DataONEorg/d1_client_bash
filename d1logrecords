@@ -14,7 +14,7 @@
 #
 
 #== Initialize a few things ==
-VERSION="Version 0.1.0"
+VERSION="Version 1.1.0"
 XML="/usr/local/bin/xml"
 TMP="/tmp"
 NAMESPACE="d=http://ns.dataone.org/service/types/v1"
@@ -38,6 +38,15 @@ showTotal=0
 eventtype=""
 certificate=""
 exportdest=""
+sqldest=""
+cachedest=""
+# Record metadata about the cache
+cache_meta_name="logcache_metadata.txt"
+# Each page is saved with the name and a counter added to the end with 
+# extension .xml
+cache_record_name="log_"
+# Name of the cache log counter file
+cache_page_counter="page_count.txt"
 
 #== various routines ==
 function date_minutes_offset()
@@ -79,6 +88,8 @@ OPTIONS:
   -B  If set, then only show records since specified date. Overrides -M
   -D  if set, then only show records up to specified date.
   -X  Extract logRecord entries stdout.
+  -A  Get all log records, saving each page of response as a separate file in the specified folder
+
   -T  Do not use SSL (i.e. http rather than https)
 EOF
 }
@@ -175,8 +186,28 @@ function get_log_count()
 }
 
 
+function setupSqlDatabase() {
+  #create an sqlite3 database and necessary tables.
+  #will not overwrite database or tables
+  #$1 is name of destination database file
+  #table will be "legrecords"
+  if [[ -f ${1} ]]; then
+    echo "Destination database exists."
+    return
+  fi
+  sqlite3 ${1} "create table logrecords (id INTEGER PRIMARY KEY AUTOINCREMENT, tstamp INTEGER, source TEXT, recordId TEXT, content TEXT);"
+}
+
+
+function insertLogRecord() {
+  local source=$(echo ${2} | xml sel -t -m "//nodeIdentifier" -v . )
+  echo ${source}
+  #sqlite3 ${1} "INSERT INTO logrecords (source, recordId, content) VALUES ('${source}','${3}')"
+}
+
+
 # == Main ==
-while getopts "hdvrgtTVIS:C:b:H:P:M:F:D:B:X:c:E:" OPTION
+while getopts "hdvrgtTVIS:C:b:H:P:M:F:D:B:X:c:E:Q:A:" OPTION
 do
   case $OPTION in 
     h) usage; exit 1;;
@@ -202,6 +233,8 @@ do
     c) certificate=$OPTARG;;
     E) eventtype=$OPTARG;;
     X) exportdest=$OPTARG;;
+    Q) sqldest=${OPTARG};;
+    A) cachedest=${OPTARG};;
     \?) usage; exit 1;;
     esac
 done
@@ -248,11 +281,31 @@ fi
 
 tmpfile="${TMP}/$(basename $0).$$.xml"
 
+if [[ ! -z ${cachedest} ]]; then
+  #Retrieve everything
+  ocount=999999999
+  if [[ -d ${cachedest} ]]; then
+    echo "Error: cache folder ${cachedest} exists. Update not implemented yet."
+    exit 1
+  else
+    mkdir -p ${cachedest}
+    cd ${cachedest}
+    echo "[config]" > ${cache_meta_name}
+    echo "baseurl=\"${baseurl}\"" >> ${cache_meta_name}
+    echo "" >> ${cache_meta_name}
+    echo "[log]" >> ${cache_meta_name}
+  fi
+fi
 if [[ -n ${raw} ]]; then
   raw_loglist_response ${URL} ${tmpfile} ${ostart} ${ocount}
 elif [[ -n ${nagios} ]]; then 
   generate_nagios_output ${URL} ${tmpfile} 0 0
 else
+  if [[ -f ${cache_page_counter} ]]; then
+    PAGE=$(cat ${cache_page_counter})
+  else
+    PAGE=0
+  fi
   STARTURL=${URL}
   GOT=${ostart}
   NGOT=0
@@ -271,29 +324,40 @@ else
       GOT=$(expr ${GOT} + ${NGOT})
       TOGET=$(expr ${ocount} - ${GOT})
       if (( ${DEBUG} > 0 )); then
-	    echo "ocount=${ocount}; GOT=${GOT}; NGOT=${NGOT}; TOGET=${TOGET}"
-	  else
-	      if [[ -n ${idsonly} ]]; then
-	        ${XML} sel -N "${NAMESPACE}" \
-	           -t -m "//logEntry" -v "identifier" -n ${tmpfile} 
-	      else
-		    if [[ -n ${exportdest} ]]; then
-	  	        ${XML} sel -N "${NAMESPACE}" \
-		          -t -m "//logEntry" \
-		             -c . \
-		             -n ${tmpfile}
-		    else
-	  	        ${XML} sel -N "${NAMESPACE}" \
-		          -t -m "//logEntry" \
-		             -v "entryId" -o " "\
-		             -v "event" -o " "\
-		             -v "dateLogged" -o "  "\
-		             -v "identifier" -o "  "\
-		             -v "nodeIdentifier" \
-		             -n ${tmpfile}
-			fi
-	      fi
-	  fi
+        echo "ocount=${ocount}; GOT=${GOT}; NGOT=${NGOT}; TOGET=${TOGET}"
+      else
+        if [[ ! -z ${cachedest} ]]; then
+          _TS=$(date +%Y-%m-%dT%H:%M:%S%z)
+          fdest="${cache_record_name}${PAGE}.xml"
+          cp ${tmpfile} ${fdest}
+          echo ${_TS}" ${fdest} CMD=${_cmd}" >> ${cache_meta_name}
+          ((PAGE++))
+          # record the next page to get
+          echo ${PAGE} > ${cache_page_counter}
+        elif [[ -n ${idsonly} ]]; then
+          ${XML} sel -N "${NAMESPACE}" \
+             -t -m "//logEntry" -v "identifier" -n ${tmpfile} 
+
+        elif [[ -n ${exportdest} ]]; then
+              ${XML} sel -N "${NAMESPACE}" \
+              -t -m "//logEntry" \
+                 -c . \
+                 -n ${tmpfile}
+
+        elif [[ -n ${sqldest} ]]; then
+            V=$(${XML} sel -t -m "//logEntry" -c . -n ${tmpfile})
+            insertLogRecord ${sqldest} "${V}"
+        else
+              ${XML} sel -N "${NAMESPACE}" \
+              -t -m "//logEntry" \
+                 -v "entryId" -o " "\
+                 -v "event" -o " "\
+                 -v "dateLogged" -o "  "\
+                 -v "identifier" -o "  "\
+                 -v "nodeIdentifier" \
+                 -n ${tmpfile}
+        fi
+    fi
     else
       echoerr "ERROR   : Status of response = ${status}"
       if [[ -n ${verbose} ]]; then
