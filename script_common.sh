@@ -21,6 +21,9 @@
 #xmlstarlet application
 XML="xml"
 
+#rdfproc application
+RDF="rdfproc"
+
 #Version 1 general namespace
 NAMESPACE="http://ns.dataone.org/service/types/v1"
 
@@ -117,6 +120,27 @@ locateXML() {
     fi
   fi
 }
+
+
+# Find the rdfproc app or bail
+locateRDF() {
+  local CANDIDATE=`which rdfproc`
+  if [[ -x ${CANDIDATE} ]]; then
+      # We're good to go, use CANDIDATE
+      RDF=${CANDIDATE}
+  else
+    # Nothing found on path, try the standard location
+    CANDIDATE="/usr/local/bin/rdfproc"
+    if [[ -x ${CANDIDATE} ]]; then
+      RDF=${CANDIDATE}
+    else
+      # Can't find rdfproc, so exit
+      lerror "Can not locate the 'rdfproc' program.  Please install and retry."
+      exit 2
+    fi
+  fi
+}
+
 
 # Write a debug message to stderr. All call parameters are output.
 ldebug() {
