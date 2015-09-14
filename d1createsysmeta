@@ -3,7 +3,7 @@
 # Create system metadata for a file.
 #
 
-VERSION="1.2.3"
+VERSION="1.2.4"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -149,6 +149,8 @@ generateSystemMetadata() {
     linfo "Rights holder set = ${rights_holder}"
   fi
 
+  local _errfile=${TMPDIR}/${APPNAME}_err.$$.txt
+  # populate the various templated fields
   ${XML} ed -u "//identifier" -v "${PID}" \
             -u "//formatId" -v "${format_id}" \
             -u "//checksum" -v "${checksum}" \
@@ -156,14 +158,18 @@ generateSystemMetadata() {
             -u "//size" -v ${file_size} \
             -u "//rightsHolder" -v "${rights_holder}" \
             -u "//accessPolicy/allow[1]/subject" -v "${rights_holder}" \
-            ${tmpfile} > ${tmpfile}.a
+            ${tmpfile} > ${tmpfile}.a 2> ${_errfile}
   mv ${tmpfile}.a ${tmpfile}
+
+  # Update the replicationPolicy entry if necessary
   if [[ "${n_replicas}" -gt 0 ]]; then
     ${XML} ed -u "//replicationPolicy/@replicationAllowed" -v "true" \
               -i "//replicationPolicy" -t attr -n "numberReplicas" -v "${n_replicas}" \
               ${tmpfile} > ${tmpfile}.a
     mv ${tmpfile}.a ${tmpfile}
   fi
+
+  # Add the authoritativeMemberNode entry if requested
   if [[ ! -z "${authoritative_member_node}" ]]; then
     ${XML} ed -a "//dateSysMetadataModified" \
            -t elem -n "authoritativeMemberNode" \
