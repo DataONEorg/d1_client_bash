@@ -49,11 +49,30 @@ Commands
 
 :d1logrecords: Retrieve log records from a node.
 
-:d1mysubject.py: A Python script that parses a PEM certificate and reports the subject string as expected by DataONE services
+:d1mysubject.py: A Python script that parses a PEM certificate and reports the
+subject string as expected by DataONE services
 
-:d1noderegister: Used by node operators to register a node in a DataONE environment.
+:d1noderegister: Used by node operators to register a node in a DataONE environment
 
-:d1nodes: 
+:d1nodes: List the nodes in a DataONE environment
+
+:d1nodeupdate: Used by node operators to notify Coordinating Nodes of a change in the node description information
+
+:d1piddiff: Report on the difference in PIDs between two nodes (typically a MN and a CN)
+
+:d1pidinfo: Lookup information about a PID.
+
+:d1ping: Perform a ping operation on a DataONE node
+
+:d1resolve: Resolve the location of an identifier
+
+:d1search: Search the solr index available on a Coordinating Node
+
+:d1subject: Wrapper for the d1mysubject.py script
+
+:d1sysmeta: Show the System Metadata for an object
+
+
 
 Examples
 --------
