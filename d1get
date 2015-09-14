@@ -33,7 +33,7 @@ OPTIONS:
   -Y  File name for saved response document (${tmpfile})
   -k  Keep response document (default is to delete on exit)
   -d  Attempt a dry-run, receiving only the first byte of the response. 
-      Requires server support of HTTP 1.1 byte ranges, most of which don't.
+      Requires server support of HTTP 1.1 byte ranges, most of which do not.
  
 EOF
 }
