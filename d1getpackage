@@ -1,0 +1,195 @@
+#!/bin/bash
+# 
+# Show a package, e.g. resourceMap_kgordon.31.26
+#
+
+VERSION="1.2.0"
+APPNAME=$(basename ${0})
+APPDIR=$(dirname "${0}")
+TMPDIR="/tmp"
+
+source "${APPDIR}/script_common.sh"
+locateXML
+locateRDF 
+
+ldebug "Using curl at: ${CURL}"
+if [[ ! -e ${CURL} ]]; then
+  lerror "Could not find curl executable (${CURL}). Unable to continue."
+  exit 1
+fi
+
+URLENCODE="${APPDIR}/urlencode"
+
+rdf_dest="${TMPDIR}/pack.$$.rdf"
+tmp_dest="${TMPDIR}/temp.$$.xml"
+
+base_url="https://cn.dataone.org/cn"
+SPARQL="http://sparql.org/sparql"
+
+
+
+function lecho() {
+  if [[ ! -z ${3} ]]; then
+    printf ${3}
+  fi
+  if [[ ! -z ${4} ]]; then
+    printf "%20s : %${4}s\n" "${1}" "${2}"
+  else
+    printf "%20s : %s\n" "${1}" "${2}"
+  fi
+  if [[ ! -z ${3} ]]; then
+    printf ${NC}
+  fi
+}
+
+
+
+function usage() {
+cat << EOF
+${APPNAME} version ${VERSION}
+
+usage: ${APPNAME} OPTIONS PID DESTINATION
+
+Show information about an identifier in DataONE.
+
+OPTIONS:
+  -h  Show this message
+  -H  Show this message with examples
+  -b  Base URL of Coordinating Node to use
+  -i  Only verify access to package components
+  -v  Set log level (1=error ... 4=debug)
+  -V  Show version and exit
+
+PID:
+  The identifier to lookup. 
+
+DESTINATION:
+  Folder into which the package contents will be retrieved.
+
+EOF
+}
+
+
+function getWithStatus() {
+  # $1 = URL
+  # $2 = destination
+  # return status
+  CMD="curl -k -s -w \"%{http_code}\" -o \"${2}\" \"${1}\""
+  linfo "Retrieve: ${CMD}"
+  echo $(eval ${CMD})
+}
+
+
+function resolvePID() {
+  # $1 = PID
+  RESOLVE_RESULTS=()
+  local pid_encoded=$(echo $1 | ${URLENCODE})
+  local url="${base_url}/v1/resolve/${pid_encoded}"
+  local status=$(getWithStatus "${url}" ${tmp_dest})
+  if [ "${status}" -eq "200" ] || [ "${status}" -eq "303" ]; then
+    RESOLVE_RESULTS=($(xml sel -t -m "//objectLocation" -v "url" -n ${tmp_dest}))
+  fi
+}
+
+
+function getDocumentsQuery() {
+  # Generates a SPARQL query that returns a list of PID_A documents PID_B
+  # ${1} is the full GET URL for the resource map.
+
+  echo "PREFIX cito: <http://purl.org/spar/cito/> "\
+       "PREFIX dct: <http://purl.org/dc/terms/> " \
+       "SELECT ?d ?c FROM <${1}> "\
+       "WHERE { ?a cito:documents ?b . "\
+       "?b dct:identifier ?c . "\
+       "?a dct:identifier ?d . }"
+}
+
+
+function loadPackage() {
+  # Resource map PID as ${1}
+
+  PACKAGE_ID=${1}
+  PACKAGE_DOCUMENTS=()
+  PACKAGE_DATA=()
+  linfo "Package" "${1}"
+  resolvePID ${1}
+  linfo ${RESOLVE_RESULTS[0]}
+
+  local get_url="${RESOLVE_RESULTS[0]}"
+  linfo "Resource Map URL:" ${get_url}
+#https://www.dajobe.org/talks/201003-semweb-sxsw/
+#http://www.cambridgesemantics.com/semantic-university/sparql-by-example
+ #curl "http://sparql.org/sparql?query=PREFIX+cito%3A+%3Chttp%3A%2F%2Fpurl.org%2Fspar%2Fcito%2F%3E%0D%0APREFIX+dct%3A+%3Chttp%3A%2F%2Fpurl.org%2Fdc%2Fterms%2F%3E%0D%0ASELECT+*%0D%0AFROM+%3Chttps%3A%2F%2Fcn.dataone.org%2Fcn%2Fv1%2Fobject%2FresourceMap_kgordon.31.26%3E%0D%0AWHERE+%7B%0D%0A++++%3Fa+cito%3Adocuments+%3Fb+.%0D%0A++++%3Fb+dct%3Aidentifier+%3Fc+.%0D%0A%7D
+ # &default-graph-uri=&output=text&stylesheet=%2Fxml-to-html.xsl"
+
+  local sparql=$(getDocumentsQuery ${get_url} | ${URLENCODE}) 
+  linfo "Encoded SPARQL: " ${sparql}
+
+  local url="${SPARQL}?query=${sparql}&output=csv"
+  linfo "SPARQL service URL: " ${url}
+
+  local i=""
+  for row in $(curl -s "${url}"); do
+    ldebug ${row}
+    if [[ ! -z ${i} ]]; then
+      local a=${row%,*}
+      local b=${row#*,}
+      echo " " "${a} --documents--> ${b}"
+    fi
+    i="1"
+  done
+
+}
+
+
+function realizePackage() {
+  # Given ${1} = package pid,
+  #       ${2} = destination folder
+  # Download objects to folder
+  #
+  lerror "Not Implemented"
+  return
+
+  mkdir -p "${DESTINATION}"
+  mkdir -p "${DESTINATION}/data"
+  PACKAGE="${DESTINATION}/package.sq3"
+  #Create package container
+  sqlite3 ${PACKAGE} "CREATE TABLE content (pid STRING PRIMARY KEY, )"
+
+}
+
+
+# === Main ===
+while getopts "hHv:Vib:" OPTION
+do
+  case ${OPTION} in
+    h) usage; exit 1;;
+    H) usageExamples; exit 1;;
+    V) showVersion; exit 1;;
+    v) LOGLEVEL=${OPTARG};;
+    b) base_url=${OPTARG};;
+    i) verify_only=1;;
+    \?) usage; exit 1;;
+  esac
+done
+
+shift $((OPTIND-1))
+PID=${1}
+if [[ -z ${PID} ]]; then
+  lerror "PID is required."
+  exit 1
+fi
+#shift $((OPTIND-1))
+DESTINATION=${2}
+if [[ -z ${DESTINATION} ]] && [[ -z ${verify_only} ]]; then
+  lerror "DESTINATION is required unless verify only."
+  exit 1
+fi
+if [[ ! -z ${verify_only} ]]; then
+  loadPackage "${PID}"
+  exit 0
+fi
+linfo "PID: " ${PID}
+linfo "Destination: " ${DESTINATION}
+realizePackage "${PID}" "${DESTINATION}"
+
