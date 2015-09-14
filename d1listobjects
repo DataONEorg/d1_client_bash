@@ -25,7 +25,7 @@
 #
 
 #== Initialize a few things ==
-VERSION="Version 1.0.0"
+VERSION="Version 1.1.0"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -87,6 +87,7 @@ OPTIONS:
   -b  BaseURL of node to retrieve objects from (${baseurl})
   -C  Number of entries to retrieve (${ocount})
   -D  If set, then only show objected created since specified date. Overrides -M
+  -E  Specify client certificate to use
   -F  Restrict to specified object format 
   -g  Just return number of objects, overrides other params
   -H  Host name, must set -P node type when used (overrides -b)
@@ -111,14 +112,19 @@ function getObjectList()
 #  $4 : count
 # updates ${status}
 {
-   addURLKV ${1} "start" ${3}
-   addURLKV ${URL} "count" ${4}
-   #_url="${1}&start=${3}&count=${4}"
-   local _cmd="curl -k -s -w \"%{http_code}\" -o \"${2}\" \"${URL}\""
-   ldebug "URL = ${URL}"
-   linfo "curl command = ${_cmd}"
-   EC=3
-   status=$(eval ${_cmd})
+  addURLKV ${1} "start" ${3}
+  addURLKV ${URL} "count" ${4}
+  #_url="${1}&start=${3}&count=${4}"
+  local _cmd=""
+  if [[ -f "${client_certificate}" ]]; then
+    _cmd="${CURL} -E ${client_certificate} -k -s -w \"%{http_code}\" -o \"${2}\" \"${URL}\""
+  else
+    _cmd="${CURL} -k -s -w \"%{http_code}\" -o \"${2}\" \"${URL}\""
+  fi
+  ldebug "URL = ${URL}"
+  linfo "curl command = ${_cmd}"
+  EC=3
+  status=$(eval ${_cmd})
 }
 
 
@@ -170,7 +176,7 @@ function getObjectCount()
 
 
 # == Main ==
-while getopts "hdv:rgtTVIAS:C:b:H:P:M:F:D:" OPTION
+while getopts "hdv:rgtTVIAS:C:b:H:P:M:F:D:E:" OPTION
 do
   case $OPTION in 
     h) usage; exit 1;;
@@ -189,6 +195,7 @@ do
     P) basePath=${OPTARG};;
     M) offsetminutes=${OPTARG};;
     D) fromdate=${OPTARG};;
+    E) client_certificate="${OPTARG}";;
     F) objectFormat=${OPTARG};;
     T) HTTP="http";;
     I) idsonly=1;;
@@ -260,31 +267,31 @@ else
       TOGET=$(expr ${ocount} - ${GOT})
       if (( ${DEBUG} > 0 )); then
         ldebug "ocount=${ocount}; GOT=${GOT}; NGOT=${NGOT}; TOGET=${TOGET}"
-	  else
-	      if [[ -n ${idsonly} ]]; then
-	        ${XML} sel -N "d=${NAMESPACE}" \
-	           -t -m "//objectInfo" -v "identifier" -n ${tmpfile} 
-	      else
-  		    if (( ${showTotal} > 0 )); then
-  	  	        ${XML} sel -N "d=${NAMESPACE}" \
-  		          -t -m "//d:objectList" -o "Total=" -v "@total" -n \
-  		          -t -m "//objectInfo" \
-  		             -v "substring(concat(size,'          '),1,10)" \
-  		             -v "dateSysMetadataModified" -o "  "\
-  		             -v "identifier" -o "  "\
-  		             -v "formatId" \
-  		             -n ${tmpfile}
-  		    else
-  	  	        ${XML} sel -N "d=${NAMESPACE}" \
-  		          -t -m "//objectInfo" \
-  		             -v "substring(concat(size,'          '),1,10)" \
-  		             -v "dateSysMetadataModified" -o "  "\
-  		             -v "identifier" -o "  "\
-  		             -v "formatId" \
-  		             -n ${tmpfile}
-    			fi
-	      fi
-	  fi
+    else
+        if [[ -n ${idsonly} ]]; then
+          ${XML} sel -N "d=${NAMESPACE}" \
+             -t -m "//objectInfo" -v "identifier" -n ${tmpfile} 
+        else
+          if (( ${showTotal} > 0 )); then
+                ${XML} sel -N "d=${NAMESPACE}" \
+                -t -m "//d:objectList" -o "Total=" -v "@total" -n \
+                -t -m "//objectInfo" \
+                   -v "substring(concat(size,'          '),1,10)" \
+                   -v "dateSysMetadataModified" -o "  "\
+                   -v "identifier" -o "  "\
+                   -v "formatId" \
+                   -n ${tmpfile}
+          else
+                ${XML} sel -N "d=${NAMESPACE}" \
+                -t -m "//objectInfo" \
+                   -v "substring(concat(size,'          '),1,10)" \
+                   -v "dateSysMetadataModified" -o "  "\
+                   -v "identifier" -o "  "\
+                   -v "formatId" \
+                   -n ${tmpfile}
+          fi
+        fi
+    fi
     else
       lerror "Status of response = ${status}"
       lerror "Raw response follows: "
