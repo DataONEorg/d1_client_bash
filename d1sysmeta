@@ -2,7 +2,7 @@
 #
 # Show system metadata for an object.
 
-VERSION="Version 1.0.1"
+VERSION="Version 1.0.2"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -75,9 +75,9 @@ linfo "PID     : ${1}"
 linfo "Encoded : ${PID}"
 
 url="${baseurl}/v1/meta/${PID}"
-CMD="curl -k -s -w \"%{http_code}\" -o \"${sysm_dest}\" \"${url}\""
+CMD="${CURL} -k -s -w \"%{http_code}\" -o \"${sysm_dest}\" \"${url}\""
 if [[ ! -z ${client_cert} ]]; then 
-  CMD="curl -k -s -E \"${client_cert}\" -w \"%{http_code}\" -o \"${sysm_dest}\" \"${url}\""
+  CMD="${CURL} -k -s -E \"${client_cert}\" -w \"%{http_code}\" -o \"${sysm_dest}\" \"${url}\""
 fi
 linfo "Command : ${CMD}"
 
