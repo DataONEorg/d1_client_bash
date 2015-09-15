@@ -1,0 +1,79 @@
+#!/bin/bash
+#
+# Deduce the object format of a file.
+#
+
+VERSION="1.0.0"
+APPNAME=$(basename "${0}")
+APPDIR=$(dirname "${0}")
+TMPDIR="/tmp"
+TMPNAM="${TMPDIR}/sysmeta.$$.xml"
+base_url=""
+dest_folder=""
+MY_CLIENT_CERT="" #This is updated by script_common
+NAMESPACE="http://ns.dataone.org/service/types/v1"
+
+# possibly override initialized variables
+source "${APPDIR}/script_common.sh"
+
+# temp file destination
+tmpfile="${TMPDIR}/sysmeta.$$.xml"
+
+
+usage()
+{
+cat << EOF
+
+usage: $(basename $0) OPTIONS FILE
+
+Guess the object format for a file.
+
+OPTIONS:
+
+  -h  Show this message
+  -v  Set log level (1=error ... 4=debug)
+  -V  Show version (${VERSION})
+
+FILE:
+
+  File for which system metadata is being generated
+ 
+EOF
+}
+
+
+# Guess objectFormat of file specified in $1
+getFileObjectFormat() {
+  local fres=$(file -b --mime-type ${1})
+  guessed_format_id="application/octet-stream"
+  case ${fres} in
+    "text/plain") guessed_format_id=${fres};;
+  esac
+}
+
+
+# --- Main ---
+
+while getopts ":hVv:i:s:E:r:n:" OPTION
+do
+    case $OPTION in
+      h) usage; exit 1;;
+      v) LOGLEVEL=$OPTARG;;
+      V) show_version; exit 1;;
+      \?) echo "ERROR:   Invalid option: -$OPTARG";usage; exit 1;;
+    esac
+done
+
+echo "level=${LOGLEVEL}"
+
+shift $((OPTIND-1))
+
+fobject="${1}"
+
+if [[ ! -f "${fobject}" ]]; then
+  lerror "The specified file does not exist: ${fobject}"
+  exit 1
+fi
+
+getFileObjectFormat "${1}"
+echo ${guessed_format_id}
