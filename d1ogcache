@@ -1,0 +1,210 @@
+#!/bin/bash
+
+# Populate and update a cache of log records retrieved from a Member Node
+#
+# This work was created by participants in the DataONE project, and is
+# jointly copyrighted by participating institutions in DataONE. For
+# more information on DataONE, see our web site at https://dataone.org.
+#
+#   Copyright 2015
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+VERSION="0.0.0"
+APPNAME=$(basename "${0}")
+APPDIR=$(dirname "${0}")
+TMPDIR="/tmp"
+base_url=""
+dest_folder=""
+MY_CLIENT_CERT="" #This is updated by script_common
+NAMESPACE="d=http://ns.dataone.org/service/types/v1"
+URLENCODE="${APPDIR}/urlencode"
+
+# Record metadata about the cache
+cache_meta_name="logcache_metadata.txt"
+# Each page is saved with the name and a counter added to the end with 
+# extension .xml
+cache_record_name="log_"
+# Name of the cache log counter file
+cache_page_counter="page_count.txt"
+
+# possibly override initialized variables
+source "${APPDIR}/script_common.sh"
+
+# temp file destination
+tmpfile="${TMPDIR}/$(basename $0).$$.xml"
+
+
+function usage() {
+cat << EOF
+${APPNAME} version ${VERSION}
+
+usage: ${APPNAME} OPTIONS BASEURL
+
+Populate and update a cache of log records retrieved from a Member Node
+
+OPTIONS:
+  -h  Show this message
+  -H  Show this message with examples
+  -v  Show version and exit
+  -L  Set log level (0..4 with increasing verbosity, [${LOGLEVEL}])
+  -c  Client PEM certificate used to authenticate for access to log records
+  -d  Name of folder in which to store log record cache
+
+BASEURL: 
+  Base URL of node to be queried for log records.
+
+EOF
+}
+
+
+function usageExamples() {
+  usage
+  cat << EOF
+
+Example: Run script with parameter and be verbose.
+
+
+${APPNAME} -v some_param
+
+some result...
+
+}
+
+
+# Retrieve a page of log records, output response to $2
+# expects:
+#  $1 : getLogRecords url without the start and count parameters
+#  $2 : destination file
+#  $3 : start
+#  $4 : count
+# updates ${http_status}
+getLogPage()
+{
+   addURLKV ${1} "start" ${3}
+   addURLKV ${URL} "count" ${4}
+   #_url="${1}&start=${3}&count=${4}"
+   _cmd="curl -k -s --cert ${certificate} -w \"%{http_code}\" -o \"${2}\" \"${URL}\""
+   ldebug ${_cmd}
+   EC=3
+   http_status=$(eval ${_cmd})
+}
+
+
+# Determine the total number of log records for provided URL
+# $1 = URL
+# $2 = tmpfile
+# sets ${log_count}
+getLogCount() 
+{
+  log_count=0
+  get_log_list ${1} ${2} 0 0
+  if [[ ${status} == "200" ]]; then
+    log_count=$(${XML} sel -N "${NAMESPACE}" -t -m "//d:log" -v "@total" ${2})
+  fi
+}
+
+#Sets the parameters STARTURL, GOT, and NGOT
+initializeStartPosition() {
+  STARTURL=${URL}
+  GOT=0
+  NGOT=0
+  PAGE=0
+  if [ -f "${cache_page_counter}" ]; then
+    PAGE=$(cat ${cache_page_counter})
+  fi
+  if [ "${PAGE}" > 0 ]; then
+    # Peek at the last log record retrieved and use that date as the starting 
+    # time slice. Older record won't be changed, and post processing will 
+    # deal with any duplicates that get picked up.
+  fi
+}
+
+
+updateCache() {
+  cd ${dest_folder}
+  URL="${baseurl}/v1/log"
+
+  initializeStartPosition
+
+  getLogCount ${URL} ${tmpfile}
+  linfo "Total log records available = ${log_count}"
+  TOGET=${log_count}
+  NGOT=${GOT}
+  while (( ${TOGET} > 0 )); do
+    TRYAGAIN=2
+    while (( ${TRYAGAIN} > 0 )); do
+      ldebug "start: ${GOT} numrequested: ${TOGET}"
+      getLogPage ${STARTURL} ${tmpfile} ${GOT} ${TOGET}
+      if [ "${http_status}" == "200" ]; then
+        TRYAGAIN=0
+        NGOT=$(${XML} sel -N "${NAMESPACE}" \
+          -t -m "//d:log" -v "@count" ${tmpfile})
+        GOT=$(expr ${GOT} + ${NGOT})
+        TOGET=$(expr ${ocount} - ${GOT})
+
+        # Write out the response to the cache
+        _TS=$(date +%Y-%m-%dT%H:%M:%S%z)
+        fdest="${cache_record_name}${PAGE}.xml"
+        cp ${tmpfile} ${fdest}
+        echo ${_TS}" ${fdest} CMD=${_cmd}" >> ${cache_meta_name}
+        linfo "Page ${PAGE}, record ${NGOT} / ${TOGET} retrieved."
+        ((PAGE++))
+          # record the next page to get
+        echo ${PAGE} > ${cache_page_counter}
+      else 
+        # retrieval failed.
+        ((TRYAGAIN--))
+        lerror "getLogRecords request failed. Tries remaining: ${TRYAGAIN}"
+      fi
+    done #tryagain
+  done #get log records
+}
+
+
+# == MAIN ==
+
+while getopts "hHvL:c:d:" OPTION
+do
+  case ${OPTION} in
+    h) usage; exit 1;;
+    H) usageExamples; exit 1;;
+    v) showVersion; exit 1;;
+    L) LOGLEVEL=${OPTARG};;
+    c) MY_CLIENT_CERT=${OPTARG};;
+    d) dest_folder=${OPTARG};;
+    \?) usage; exit 1;;
+  esac
+done
+
+shift $((OPTIND-1))
+base_url=${1}
+if [ -z "${base_url}" ]; then
+  lerror "BASEURL is required."
+  exit 1
+fi
+
+if [ ! -f "${MY_CLIENT_CERT}" ]; then
+  lerror "Client certificate not found: ${MY_CLIENT_CERT}"
+  exit 1
+fi
+
+# do all the work
+updateCache
+
+if [ -f ${tmpfile} ]; then
+  ldebug "Removing temporary file: ${tmpfile}"
+  rm ${tmpfile}
+fi
+
