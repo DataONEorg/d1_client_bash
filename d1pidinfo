@@ -343,6 +343,25 @@ function grepCNLogsForPID() {
   echo "###" >> ${_dest_file}
   ssh ${_hostname} ${_cmd} >> ${_dest_file}
 
+  _cmd="cd ${_logbase}/../tomcat7; grep '${2}' cn.log*"
+  linfo "Command = ${_cmd}"
+  echo "" >> ${_dest_file}
+  echo "###" >> ${_dest_file}
+  echo "# ${_cmd}" >> ${_dest_file}
+  echo "###" >> ${_dest_file}
+  ssh ${_hostname} ${_cmd} >> ${_dest_file}
+
+  local dstamp=$(date +%Y-%m)
+  _cmd="cd ${_logbase}/../tomcat7; grep '${2}' catalina.${dstamp}*"
+  linfo "Command = ${_cmd}"
+  echo "" >> ${_dest_file}
+  echo "###" >> ${_dest_file}
+  echo "# ${_cmd}" >> ${_dest_file}
+  echo "###" >> ${_dest_file}
+  ssh ${_hostname} ${_cmd} >> ${_dest_file}
+
+  
+
   cat ${_dest_file}
 }
 
