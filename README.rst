@@ -185,4 +185,21 @@ Example: Download an object to local disk::
   ## Column06 : date     : Sampling date                                           :int[%6d]
   ## Column07 : seedsrc  : Seed source                                             :char[%9s]
 
+
+Example: Create System Metadata and Upload a Document to a Member Node
+
+::
+  $ echo "This is a test document." > test.txt
+
+  $ d1login
+  
+    ... Browser session, shibCILaunchGSCA.jnlp saved to ~/Downloads
+
+    2015-10-02T13:12:01-0400 INFO: Certificate file: /tmp/x509up_u501
+    /tmp/x509up_u501
+
+  $ cp /tmp/x509up_501 .
+  $ d1createsysmetadata -E x509up_u501 -i "test.001" -f "text/plain" test.txt > sysmeta.xml
+  $ d1create -b "https://my.member.node/mn" -E x509up_u501 sysmeta.xml test.txt
+
      

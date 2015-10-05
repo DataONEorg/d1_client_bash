@@ -23,7 +23,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-VERSION="1.0.0"
+VERSION="1.0.1"
 APPNAME=$(basename "${0}")
 APPDIR=$(dirname "${0}")
 TMPDIR="/tmp"
@@ -31,6 +31,7 @@ test_cert=0
 JNLP=""
 CERTIFICATE=""
 LOGON_ADDRESS="https://cilogon.org/?skin=dataone"
+WATCH_JNLP=" ${HOME}/Downloads/shibCILaunchGSCA.jnlp"
 
 source "${APPDIR}/script_common.sh"
 locateXML
@@ -79,18 +80,51 @@ downloadCert() {
   mainclass=$(${XML} sel -t -m "//application-desc" -v "@main-class" ${JNLP})
   ldebug "mainclass: ${mainclass}"
   authtoken=$(${XML} sel -t -m "//argument[starts-with(.,'AuthenticationToken')]" -v .  ${JNLP})
+  authtoken=${authtoken//[[:blank:]]/}
   ldebug "authoken: ${authtoken}"
   webappurl=$(${XML} sel -t -m "//argument[starts-with(.,'WebAppURL')]" -v . ${JNLP})
+  webappurl=${webappurl//[[:blank:]]/}
   ldebug "webappurl: ${webappurl}"
   myuid=$(id -u)
   ldebug "myuid: ${myuid}"
-  ${CURL} -s "${codebase}/${appjar}" > "${TMPDIR}/${appjar}"
-  java -cp "${TMPDIR}/${appjar}" ${mainclass} \
-    ${webappurl//[[:blank:]]/} \
-    ${authtoken//[[:blank:]]/} \
-    UseBundledCAs=true maxCleartextLifetime=1000000 minPassphraseLength=12 \
-    DownloadCAs=false lifetime=64800
-  CERTIFICATE="${TMPDIR}/x509up_u${myuid}"
+
+  webappurl=(${webappurl//=/ })
+  ldebug ${webappurl[1]}
+
+  authtoken=(${authtoken//=/ })
+  ldebug ${authtoken[1]}
+
+  CERTIFICATE=$(python grid-shib.py -c 1000000 -p 12 -l 64800 \
+                -s "${webappurl[1]}" \
+                -a "${authtoken[1]}" )
+  linfo ${CERTIFICATE}
+  rm ${JNLP}
+
+  #${CURL} -s "${codebase}/${appjar}" > "${TMPDIR}/${appjar}"
+  #java -cp "${TMPDIR}/${appjar}" ${mainclass} \
+  #  ${webappurl//[[:blank:]]/} \
+  #  ${authtoken//[[:blank:]]/} \
+  #  UseBundledCAs=true maxCleartextLifetime=1000000 minPassphraseLength=12 \
+  #  DownloadCAs=false lifetime=64800
+  #CERTIFICATE="/tmp/x509up_u${myuid}"
+}
+
+# Waits for a file to exist
+waitForFile() {
+  linfo "Waiting for up to 30 seconds for login to complete..."
+  local _counter=30
+  local _interval=2
+  while [ ! -f ${WATCH_JNLP} ]; do
+    sleep ${_interval}
+    _counter=$((${_counter}-${_interval}))
+    linfo "${_counter} seconds..."
+    if [ ${_counter} -le 0 ]; then
+      lwarn "Timed out waiting for login to complete. Rerun this script as:"
+      lwarn "  ${APPNAME} ${WATCH_JNLP}"
+      lwarn "after downloading the .jnlp file from CILogon."
+      exit 2
+    fi
+  done
 }
 
 
@@ -111,13 +145,15 @@ done
 shift $((OPTIND-1))
 JNLP=${1}
 if [[ ! -f "${JNLP}" ]]; then
-  echo "Opening browser. Re-run this script with the name of the downlaoded file."
+  echo "Opening browser and waiting for download to: ${WATCH_JNLP}"
   if [ "$(uname)" = "Darwin" ]; then
     open "${LOGON_ADDRESS}"
-    exit 0;
+    waitForFile ${WATCH_JNLP}
+    JNLP=${WATCH_JNLP}
+  else
+    usage
+    exit 1
   fi
-  usage
-  exit 1
 fi
 downloadCert
 if [[ -f ${CERTIFICATE} ]]; then
