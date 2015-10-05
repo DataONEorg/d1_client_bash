@@ -97,19 +97,24 @@ downloadCert() {
   authtoken=(${authtoken//=/ })
   ldebug ${authtoken[1]}
 
-  CERTIFICATE=$(python grid-shib.py -c 1000000 -p 12 -l 64800 \
-                -s "${webappurl[1]}" \
-                -a "${authtoken[1]}" )
-  linfo ${CERTIFICATE}
-  rm ${JNLP}
-
-  #${CURL} -s "${codebase}/${appjar}" > "${TMPDIR}/${appjar}"
-  #java -cp "${TMPDIR}/${appjar}" ${mainclass} \
-  #  ${webappurl//[[:blank:]]/} \
-  #  ${authtoken//[[:blank:]]/} \
-  #  UseBundledCAs=true maxCleartextLifetime=1000000 minPassphraseLength=12 \
-  #  DownloadCAs=false lifetime=64800
-  #CERTIFICATE="/tmp/x509up_u${myuid}"
+  #Try using the python script if it exists, since there's no UI 
+  # interaction required.
+  if [ -f "${APPDIR}/grid-shib.py" ]; then
+    CERTIFICATE=$(python ${APPDIR}/grid-shib.py -c 1000000 -p 12 -l 64800 \
+                  -s "${webappurl[1]}" \
+                  -a "${authtoken[1]}" )
+    linfo ${CERTIFICATE}
+    rm ${JNLP}
+    return
+  fi
+  # Fall back to the java tool, it requires a user click to finish.
+  ${CURL} -s "${codebase}/${appjar}" > "${TMPDIR}/${appjar}"
+  java -cp "${TMPDIR}/${appjar}" ${mainclass} \
+    ${webappurl//[[:blank:]]/} \
+    ${authtoken//[[:blank:]]/} \
+    UseBundledCAs=true maxCleartextLifetime=1000000 minPassphraseLength=12 \
+    DownloadCAs=false lifetime=64800
+  CERTIFICATE="/tmp/x509up_u${myuid}"
 }
 
 # Waits for a file to exist
