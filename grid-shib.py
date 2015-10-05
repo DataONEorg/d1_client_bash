@@ -158,7 +158,7 @@ class GridShibCACredentialIssuerURL(GridShibCAURL):
         "GRIDSHIBCA_SESSION_ID" : actCode,
         "certificateRequest" : requestPEM,
         }
-    debug("Posting request")
+    logging.debug("Posting request")
     try:
       certificatePEM = self.post(postFields)
     except urllib2.HTTPError, err:
@@ -188,7 +188,7 @@ class X509Credential:
                       bits = 2048,
                       messageDigest = "sha1"):
     """Generate a request and return the PEM-encoded PKCS10 object."""
-    progress("Generating private keys and certificate request.")
+    logging.info("Generating private keys and certificate request.")
     self.request = crypto.X509Req()
     self.privateKey = crypto.PKey()
     self.privateKey.generate_key(keyType, bits)

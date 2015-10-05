@@ -31,7 +31,7 @@ test_cert=0
 JNLP=""
 CERTIFICATE=""
 LOGON_ADDRESS="https://cilogon.org/?skin=dataone"
-WATCH_JNLP=" ${HOME}/Downloads/shibCILaunchGSCA.jnlp"
+WATCH_JNLP="${HOME}/Downloads/shibCILaunchGSCA.jnlp"
 
 source "${APPDIR}/script_common.sh"
 locateXML
@@ -55,8 +55,11 @@ JNLP:
 Obtaining the client certificate is a two-step process. First, the user must
 authenticate with a CILogon service identity provider using a web browser. The 
 response from this is a file "shibCILaunchGSCA.jnlp" which is a java-webstart
-document. Running this script a second time with that file as an argument will
-execute the java app and download the client certificate.
+document. 
+
+Running this script a second time with the .jnlp file as an argument will
+execute a python script that downloads the client certificate using the 
+parameters extracted from the .jnlp file.
 
 On OSX, the default browser will be opened to the login page. On other systems,
 navigate to "${LOGON_ADDRESS}" and authenticate to retrieve the .jnlp file.
