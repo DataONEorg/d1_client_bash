@@ -6,12 +6,25 @@ memberships.
 '''
 
 import sys
+import os
 import logging
-import optparse
+import argparse
 from OpenSSL import crypto
 from pyasn1.error import PyAsn1Error
 from pyasn1.codec.ber import decoder
 from lxml import etree
+
+VERSION="2.0.0"
+
+NAMESPACES = {
+  "d1" : "http://ns.dataone.org/service/types/v1",
+  "d1_1": "http://ns.dataone.org/service/types/v1.1",
+  "d1_2": "http://ns.dataone.org/service/types/v2.0",
+  }
+
+
+def showVersion():
+  print "%s version %s" % (os.path.basename(__file__), VERSION)
 
 
 def getSubjectFromName(xName):
@@ -44,20 +57,47 @@ def dumpExtensions(x509):
       logging.debug("  Value: %s" % str(ext.get_data()))
   
 
-def getSubjectInfoFromCert(x509):
-  '''Retrieve the SubjectInfo xml from the certificate, if present
+def getMatchingSubjectInfoFromCert(x509):
+  '''Retrieve a list of strings from the x509 extensions that contain 
+  the string "subjectInfo".
   '''
-  #This is a huge hack - iterate through the extensions looking for a UTF8 
-  #object that contains the string "subjectInfo". The extension has no name, and 
-  #the OpenSSL lib currently has no way to retrieve the extension by OID 
-  #which is 1.3.6.1.4.1.34998.2.1 for the DataONE SubjectInfo extension
+  # This is a huge hack, though it works nicely - iterate through the extensions 
+  # looking for a UTF8 object that contains the string "subjectInfo". The 
+  # extension has no name, and the OpenSSL lib currently has no way to retrieve 
+  # the extension by OID which is 1.3.6.1.4.1.34998.2.1 for the DataONE 
+  # subjectInfo extension.
+  #
+  # A caller should check that the returned data is a valid subjectInfo 
+  # structure
   decoder.decode.defaultErrorState = decoder.stDumpRawValue
   nExt = x509.get_extension_count()
+  res = []
   for i in xrange(0, nExt):
     ext = x509.get_extension(i)
     sv = decoder.decode(ext.get_data())
     if str(sv).find("subjectInfo") >= 0:
-      return sv[0]
+      res.append( sv[0] )
+  return res
+
+
+def getSubjectInfoFromCert(x509):
+  matches = getMatchingSubjectInfoFromCert(x509)
+  for match in matches:
+    try:
+      match = str(match)
+      #Verify the thing is valid XML
+      logging.debug("Loading xml structure")
+      doc = etree.fromstring( match )
+      #Is this a subject info structure?
+      logging.debug("Looking for subjectInfo element...")
+      for ns in NAMESPACES:
+        test = "{%s}subjectInfo" % NAMESPACES[ns]
+        if doc.tag == test:
+          logging.debug("Match on %s" % test)
+          return match
+    except Exception, e:
+      logging.exception( e )
+      pass
   return None
 
 
@@ -67,7 +107,6 @@ def getSubjectFromCertFile(certFileName):
   x509 = crypto.load_certificate(crypto.FILETYPE_PEM, certf.read())
   certf.close()
   dumpExtensions(x509)
-  
   if x509.has_expired():
     logging.warn("Certificate has expired!")
     status = 0
@@ -83,35 +122,52 @@ def getSubjectFromCertFile(certFileName):
 
 
 if __name__ == "__main__":
-  usage = "usage: %prog [options] cert_file_name"
-  parser = optparse.OptionParser(usage=usage)
-  parser.add_option('-l', '--loglevel', dest='llevel', default=20, type='int',
-                help='Reporting level: 10=debug, 20=Info, 30=Warning, ' +\
-                     '40=Error, 50=Fatal [default: %default]')
-  parser.add_option('-i', '--info', dest='info', default=False, action='store_true',
-                help='Show subject info in certificate [default: %default]')  
-  parser.add_option('-f', '--format', dest='format', default=False, action='store_true',
-                help='Format subject add info output for people [default: %default]')  
+  parser = argparse.ArgumentParser(
+    description="Show client certificate information" )
+  parser.add_argument('--loglevel', '-l', type=int, nargs=1, default=20,
+    help='Reporting level: 10=debug, 20=Info, 30=Warning, ' +\
+         '40=Error, 50=Fatal')
+  parser.add_argument('--info', '-i', action='store_true',
+    help='Output only subjectInfo structure in certificate')
+  parser.add_argument('--format', '-f', action='store_true',
+    help='Format subject add info output for people')
+  parser.add_argument('--version', '-v', action='store_true',
+    help="Show version and exit.")
+  parser.add_argument('certfile',
+    help='Certificate file name.')
 
-  (options, args) = parser.parse_args(sys.argv)
-  if options.llevel not in [10,20,30,40,50]:
-    options.llevel = 20
-  logging.basicConfig(level=int(options.llevel))
-  if len(args) < 2:
-    parser.print_help()
-    sys.exit()
+  options = parser.parse_args()
+  llevel = options.loglevel[0]
+  if llevel not in [10,20,30,40,50]:
+    llevel = 20
+  logging.basicConfig(level=llevel)
+  if options.version:
+    showVersion();
+    sys.exit(0)
   
-  fname = args[1]
+  fname = options.certfile
   subject, status = getSubjectFromCertFile(fname)
-  print subject['subject']
+  logging.debug("Subject = %s", repr(subject))
   if options.info:
+    #Request to output just subjectInfo to stdout
     if subject['subjectInfo'] is not None:
       if options.format:
-        root = etree.fromstring( str(subject['subjectInfo']) )
-        print "SubjectInfo:"
-        print etree.tostring(root, pretty_print=True, encoding='UTF-8', xml_declaration=True)
+        root = etree.fromstring( subject['subjectInfo'] )
+        print etree.tostring( root, pretty_print=True, encoding='UTF-8', 
+                              xml_declaration=True )
       else:
-        print str(subject['subjectInfo'])
+        print subject['subjectInfo']
+  else:
+    #Otherwise output everything
+    print subject['subject']
+    if subject['subjectInfo'] is not None:
+      if options.format:
+        root = etree.fromstring( subject['subjectInfo'] )
+        print "SubjectInfo:"
+        print etree.tostring( root, pretty_print=True, encoding='UTF-8', 
+                              xml_declaration=True )
+      else:
+        print subject['subjectInfo']
   if status == 0:
     sys.exit(2)
   sys.exit(0)
