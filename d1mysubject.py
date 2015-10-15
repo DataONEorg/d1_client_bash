@@ -124,7 +124,7 @@ def getSubjectFromCertFile(certFileName):
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(
     description="Show client certificate information" )
-  parser.add_argument('--loglevel', '-l', type=int, nargs=1, default=20,
+  parser.add_argument('--loglevel', '-l', type=int, default=20,
     help='Reporting level: 10=debug, 20=Info, 30=Warning, ' +\
          '40=Error, 50=Fatal')
   parser.add_argument('--info', '-i', action='store_true',
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     help='Certificate file name.')
 
   options = parser.parse_args()
-  llevel = options.loglevel[0]
+  llevel = options.loglevel
   if llevel not in [10,20,30,40,50]:
     llevel = 20
   logging.basicConfig(level=llevel)
